@@ -8,4 +8,5 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  base: '/proconGantChartTest/', // ←ここを追加（前後にスラッシュを忘れないように注意）
 })
