@@ -8,12 +8,12 @@ import BudgetView from './BudgetView';
 import MemoView from './MemoView';
 import MemberView from './MemberView';
 
-const STORAGE_KEY_TASKS = 'lean-connect-tasks-v7';
+const STORAGE_KEY_TASKS = 'lean-connect-tasks-v8';
 const STORAGE_KEY_GROUPS = 'lean-connect-groups-v4';
-const STORAGE_KEY_EXPENSES = 'lean-connect-expenses-v1';
-const STORAGE_KEY_MEMOS = 'lean-connect-memos-v1';
-const STORAGE_KEY_MEMBERS = 'lean-connect-members-v1';
-const STORAGE_KEY_BUDGET = 'lean-connect-budget-v1';
+const STORAGE_KEY_EXPENSES = 'lean-connect-expenses-v2';
+const STORAGE_KEY_MEMOS = 'lean-connect-memos-v2';
+const STORAGE_KEY_MEMBERS = 'lean-connect-members-v2';
+const STORAGE_KEY_BUDGET = 'lean-connect-budget-v2';
 
 const formatDate = (date: Date) => {
   const y = date.getFullYear();
@@ -22,8 +22,10 @@ const formatDate = (date: Date) => {
   return `${y}-${m}-${d}`;
 };
 
+type ViewType = 'home' | 'gantt' | 'budget' | 'memo' | 'members';
+
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'gantt' | 'budget' | 'memo' | 'members'>('home');
+  const [currentView, setCurrentView] = useState<ViewType>('home');
   const [taskMode, setTaskMode] = useState<'prep' | 'day'>('prep');
 
   const [groups, setGroups] = useState<Group[]>(() => {
@@ -66,6 +68,7 @@ export default function App() {
   const [newTaskEnd, setNewTaskEnd] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskType, setNewTaskType] = useState<'resident' | 'individual'>('resident');
+  const [newTaskAssignees, setNewTaskAssignees] = useState<string[]>([]);
   
   const [newTaskStartTime, setNewTaskStartTime] = useState('10:00');
   const [newTaskEndTime, setNewTaskEndTime] = useState('12:00');
@@ -80,7 +83,6 @@ export default function App() {
   useEffect(() => { localStorage.setItem(STORAGE_KEY_MEMBERS, JSON.stringify(members)); }, [members]);
   useEffect(() => { localStorage.setItem(STORAGE_KEY_BUDGET, String(totalBudget)); }, [totalBudget]);
 
-  // 当日モード用の動的タイムスロット計算
   const dynamicTimeSlots = useMemo(() => {
     const dayTasks = tasks.filter(t => t.taskMode === 'day');
     if (dayTasks.length === 0) return ['10:00', '10:30', '11:00', '11:30', '12:00'];
@@ -97,8 +99,8 @@ export default function App() {
       }
     });
 
-    minMin = Math.floor(minMin / 30) * 30 - 30; // 余裕を持たせるために-30分
-    maxMin = Math.ceil(maxMin / 30) * 30 + 30;  // +30分
+    minMin = Math.floor(minMin / 30) * 30 - 30;
+    maxMin = Math.ceil(maxMin / 30) * 30 + 30;
 
     const slots = [];
     for(let m = minMin; m <= maxMin; m += 30) {
@@ -222,6 +224,7 @@ export default function App() {
     setNewTaskStartTime('10:00');
     setNewTaskEndTime('12:00');
     setNewTaskType('resident');
+    setNewTaskAssignees(members.map(m => m.name).slice(0, 3));
     setIsModalOpen(true);
   };
 
@@ -231,8 +234,6 @@ export default function App() {
     
     const actualStart = newTaskStart <= newTaskEnd ? newTaskStart : newTaskEnd;
     const actualEnd = newTaskStart <= newTaskEnd ? newTaskEnd : newTaskStart;
-    
-    const allMemberNames = members.map(m => m.name);
 
     const newTask: Task = {
       taskId: `task_${Date.now()}`,
@@ -247,9 +248,9 @@ export default function App() {
       taskType: taskMode === 'day' ? newTaskType : undefined,
       startTime: taskMode === 'day' ? newTaskStartTime : undefined,
       endTime: taskMode === 'day' ? newTaskEndTime : undefined,
-      currentId: taskMode === 'day' && newTaskType === 'resident' && allMemberNames.length > 0 ? allMemberNames[0] : undefined,
+      currentId: taskMode === 'day' && newTaskType === 'resident' && newTaskAssignees.length > 0 ? newTaskAssignees[0] : undefined,
       color: taskMode === 'day' ? (newTaskType === 'resident' ? 'bg-pink-500' : 'bg-blue-500') : 'bg-blue-500', 
-      assignees: allMemberNames,
+      assignees: newTaskAssignees,
       remind: '締め切り日の2日前',
     };
 
@@ -262,15 +263,6 @@ export default function App() {
     if (window.confirm(`「${selectedTask.taskName}」を削除しますか？`)) {
       setTasks(tasks.filter(t => t.taskId !== selectedTask.taskId));
       setSelectedTask(null);
-    }
-  };
-
-  const handleAddGroup = () => {
-    const name = window.prompt('新しいグループ名を入力してください:');
-    if (name && name.trim()) {
-      const newGroup = { id: `g_${Date.now()}`, name: name.trim() };
-      setGroups([...groups, newGroup]);
-      setNewTaskGroup(newGroup.id);
     }
   };
 
@@ -293,14 +285,13 @@ export default function App() {
   };
 
   const handleHandover = (task: Task) => {
-    const allMemberNames = members.map(m => m.name);
-    if (allMemberNames.length <= 1) {
-      alert('メンバーが複数人登録されている場合に引き継ぎを行えます。\nメンバーページから追加してください。');
+    if (!task.assignees || task.assignees.length <= 1) {
+      alert('メンバーが複数人登録されている場合に引き継ぎを行えます。\nタスク詳細画面から割り当てを追加してください。');
       return;
     }
-    const currentIndex = allMemberNames.indexOf(task.currentId || allMemberNames[0]);
-    const nextIndex = (currentIndex + 1) % allMemberNames.length;
-    const nextAssignee = allMemberNames[nextIndex];
+    const currentIndex = task.assignees.indexOf(task.currentId || task.assignees[0]);
+    const nextIndex = (currentIndex + 1) % task.assignees.length;
+    const nextAssignee = task.assignees[nextIndex];
 
     setTasks(prev => prev.map(t => t.taskId === task.taskId ? { ...t, currentId: nextAssignee } : t));
     if (selectedTask && selectedTask.taskId === task.taskId) {
@@ -318,11 +309,11 @@ export default function App() {
         </div>
         <nav className="flex-1 py-6 flex flex-col gap-2 px-4">
           {NAV_ITEMS.map(item => {
-            const isActive = item.id === currentView || (item.id === 'home' && currentView === 'gantt');
+            const isActive = item.id === currentView;
             return (
               <button 
                 key={`pc-nav-${item.id}`}
-                onClick={() => setCurrentView(item.id as any)} 
+                onClick={() => setCurrentView(item.id as ViewType)} 
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${
                   isActive ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-600 hover:bg-gray-50'
                 }`}
@@ -396,7 +387,7 @@ export default function App() {
               ) : currentView === 'memo' ? (
                 <MemoView memos={memos} setMemos={setMemos} />
               ) : currentView === 'members' ? (
-                <MemberView members={members} setMembers={setMembers} />
+                <MemberView members={members} setMembers={setMembers} tasks={tasks} />
               ) : currentView === 'gantt' ? (
                 <>
                   <div className="bg-white border-b border-gray-100 flex justify-between items-center px-4 py-3 gap-3 shrink-0 z-10">
@@ -454,16 +445,15 @@ export default function App() {
         </div>
       </main>
 
-      {/* ボトムナビゲーション (ホーム画面以外で表示) */}
+      {/* ボトムナビゲーション */}
       {currentView !== 'home' && (
         <nav className="md:hidden fixed bottom-0 w-full h-16 bg-white border-t border-gray-200 flex justify-around items-center text-[10px] text-gray-500 z-40 pb-safe">
           {NAV_ITEMS.map(item => {
-            const isActive = item.id === currentView || (item.id === 'home' && currentView === 'gantt');
-              
+            const isActive = item.id === currentView;
             return (
               <button 
                 key={`mobile-nav-${item.id}`}
-                onClick={() => setCurrentView(item.id as any)} 
+                onClick={() => setCurrentView(item.id as ViewType)} 
                 className={`flex flex-col items-center transition-colors ${
                   isActive ? 'text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700'
                 }`}
@@ -611,12 +601,6 @@ export default function App() {
                     <option key={g.id} value={g.id}>▼ {g.name}</option>
                   ))}
                 </select>
-                
-                <div className="flex justify-end gap-3 mt-1.5 px-1">
-                  <button type="button" onClick={handleAddGroup} className="text-xs text-blue-500 hover:text-blue-700 font-bold flex items-center gap-1">
-                    <span>＋</span>追加
-                  </button>
-                </div>
               </div>
 
               {taskMode === 'prep' ? (
@@ -775,6 +759,39 @@ export default function App() {
                       />
                     </div>
                   )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-500 mb-1">割り当てメンバー</label>
+                <div className="flex flex-wrap gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-200 min-h-12">
+                  {selectedTask.assignees?.map((name) => {
+                    const member = members.find(m => m.name === name);
+                    const colorClass = member ? member.color : 'bg-gray-400';
+                    return (
+                      <span key={name} className={`${colorClass} text-white px-2.5 py-1 rounded-full flex items-center justify-center text-xs font-bold shadow-sm`}>
+                        {name}
+                        <button 
+                          onClick={() => updateSelectedTask({ assignees: selectedTask.assignees?.filter(a => a !== name) })}
+                          className="ml-1.5 text-white hover:text-red-200"
+                        >&times;</button>
+                      </span>
+                    );
+                  })}
+                  <select 
+                    onChange={(e) => {
+                      if(e.target.value && !selectedTask.assignees?.includes(e.target.value)) {
+                        updateSelectedTask({ assignees: [...(selectedTask.assignees || []), e.target.value] });
+                      }
+                      e.target.value = '';
+                    }}
+                    className="text-xs border rounded p-1 bg-white"
+                  >
+                    <option value="">＋追加</option>
+                    {members.filter(m => !selectedTask.assignees?.includes(m.name)).map(m => (
+                      <option key={m.id} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
