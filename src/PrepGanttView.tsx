@@ -78,8 +78,8 @@ export default function PrepGanttView({
                   onClick={() => onSelectTask(t)}
                   className={`
                     ${t.color} text-white text-sm font-bold rounded-lg mx-1.5 my-0.75 
-                    flex items-center justify-center shadow-sm cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md z-10 relative
-                    ${isCompleted ? 'opacity-50 border-2 border-dashed border-white/50' : 'opacity-90 hover:opacity-100'}
+                    flex items-center justify-center shadow-sm cursor-pointer transition-all hover:brightness-110 hover:shadow-md z-10 relative
+                    ${isCompleted ? 'opacity-50 border-2 border-dashed border-white/50' : 'opacity-90'}
                     ${t.needHelp ? 'ring-2 ring-red-500 animate-pulse border-red-500' : ''}
                   `}
                   style={{

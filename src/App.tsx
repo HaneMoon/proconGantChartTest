@@ -1,12 +1,19 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { Task, Group, DateItem } from './types';
-import { initialGroups, NAV_ITEMS } from './types';
+import type { Task, Group, DateItem, Expense, Memo, Member } from './types';
+import { initialGroups, initialExpenses, initialMemos, initialMembers, NAV_ITEMS } from './types';
 import HomeView from './HomeView';
 import PrepGanttView from './PrepGanttView';
 import DayTimelineView from './DayTimelineView';
+import BudgetView from './BudgetView';
+import MemoView from './MemoView';
+import MemberView from './MemberView';
 
-const STORAGE_KEY_TASKS = 'lean-connect-tasks-v6';
-const STORAGE_KEY_GROUPS = 'lean-connect-groups-v3';
+const STORAGE_KEY_TASKS = 'lean-connect-tasks-v7';
+const STORAGE_KEY_GROUPS = 'lean-connect-groups-v4';
+const STORAGE_KEY_EXPENSES = 'lean-connect-expenses-v1';
+const STORAGE_KEY_MEMOS = 'lean-connect-memos-v1';
+const STORAGE_KEY_MEMBERS = 'lean-connect-members-v1';
+const STORAGE_KEY_BUDGET = 'lean-connect-budget-v1';
 
 const formatDate = (date: Date) => {
   const y = date.getFullYear();
@@ -16,7 +23,7 @@ const formatDate = (date: Date) => {
 };
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'gantt'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'gantt' | 'budget' | 'memo' | 'members'>('home');
   const [taskMode, setTaskMode] = useState<'prep' | 'day'>('prep');
 
   const [groups, setGroups] = useState<Group[]>(() => {
@@ -29,35 +36,79 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_EXPENSES);
+    return saved ? JSON.parse(saved) : initialExpenses;
+  });
+
+  const [memos, setMemos] = useState<Memo[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_MEMOS);
+    return saved ? JSON.parse(saved) : initialMemos;
+  });
+
+  const [members, setMembers] = useState<Member[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_MEMBERS);
+    return saved ? JSON.parse(saved) : initialMembers;
+  });
+
+  const [totalBudget, setTotalBudget] = useState<number>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_BUDGET);
+    return saved ? Number(saved) : 70000;
+  });
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
 
-  // 新規タスク追加フォーム
   const [newTaskName, setNewTaskName] = useState('');
   const [newTaskGroup, setNewTaskGroup] = useState('');
   const [newTaskStart, setNewTaskStart] = useState('');
   const [newTaskEnd, setNewTaskEnd] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
-  const [newTaskAssignees] = useState<string[]>(['佐藤', '鈴木', '花子']);
   const [newTaskType, setNewTaskType] = useState<'resident' | 'individual'>('resident');
   
-  // 分単位で設定可能な時間ステート (例: "10:00")
   const [newTaskStartTime, setNewTaskStartTime] = useState('10:00');
   const [newTaskEndTime, setNewTaskEndTime] = useState('12:00');
 
   const [selectedYearMonth, setSelectedYearMonth] = useState('2026-06');
   const dateRowRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(tasks));
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_GROUPS, JSON.stringify(groups)); }, [groups]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_EXPENSES, JSON.stringify(expenses)); }, [expenses]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_MEMOS, JSON.stringify(memos)); }, [memos]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_MEMBERS, JSON.stringify(members)); }, [members]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_BUDGET, String(totalBudget)); }, [totalBudget]);
+
+  // 当日モード用の動的タイムスロット計算
+  const dynamicTimeSlots = useMemo(() => {
+    const dayTasks = tasks.filter(t => t.taskMode === 'day');
+    if (dayTasks.length === 0) return ['10:00', '10:30', '11:00', '11:30', '12:00'];
+    
+    let minMin = 24 * 60, maxMin = 0;
+    dayTasks.forEach(t => {
+      if (t.startTime) {
+        const [h, m] = t.startTime.split(':').map(Number);
+        minMin = Math.min(minMin, h * 60 + m);
+      }
+      if (t.endTime) {
+        const [h, m] = t.endTime.split(':').map(Number);
+        maxMin = Math.max(maxMin, h * 60 + m);
+      }
+    });
+
+    minMin = Math.floor(minMin / 30) * 30 - 30; // 余裕を持たせるために-30分
+    maxMin = Math.ceil(maxMin / 30) * 30 + 30;  // +30分
+
+    const slots = [];
+    for(let m = minMin; m <= maxMin; m += 30) {
+      const hh = String(Math.floor(m / 60)).padStart(2, '0');
+      const mm = String(m % 60).padStart(2, '0');
+      slots.push(`${hh}:${mm}`);
+    }
+    return slots;
   }, [tasks]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_GROUPS, JSON.stringify(groups));
-  }, [groups]);
-
-  // カレンダー日付の連続生成
   const dates = useMemo(() => {
     const prepTasks = tasks.filter(t => t.taskMode === 'prep');
     const generateDates = (startStr: string, endStr: string): DateItem[] => {
@@ -129,7 +180,6 @@ export default function App() {
     }
   };
 
-  // 統計計算
   const stats = useMemo(() => {
     const prepTasks = tasks.filter(t => t.taskMode === 'prep');
     const totalTasks = prepTasks.length;
@@ -181,6 +231,8 @@ export default function App() {
     
     const actualStart = newTaskStart <= newTaskEnd ? newTaskStart : newTaskEnd;
     const actualEnd = newTaskStart <= newTaskEnd ? newTaskEnd : newTaskStart;
+    
+    const allMemberNames = members.map(m => m.name);
 
     const newTask: Task = {
       taskId: `task_${Date.now()}`,
@@ -195,9 +247,9 @@ export default function App() {
       taskType: taskMode === 'day' ? newTaskType : undefined,
       startTime: taskMode === 'day' ? newTaskStartTime : undefined,
       endTime: taskMode === 'day' ? newTaskEndTime : undefined,
-      currentId: taskMode === 'day' && newTaskType === 'resident' ? newTaskAssignees[0] : undefined,
+      currentId: taskMode === 'day' && newTaskType === 'resident' && allMemberNames.length > 0 ? allMemberNames[0] : undefined,
       color: taskMode === 'day' ? (newTaskType === 'resident' ? 'bg-pink-500' : 'bg-blue-500') : 'bg-blue-500', 
-      assignees: newTaskAssignees,
+      assignees: allMemberNames,
       remind: '締め切り日の2日前',
     };
 
@@ -241,13 +293,14 @@ export default function App() {
   };
 
   const handleHandover = (task: Task) => {
-    if (!task.assignees || task.assignees.length <= 1) {
-      alert('割り当てメンバーが複数人いる場合に引き継ぎを行えます。');
+    const allMemberNames = members.map(m => m.name);
+    if (allMemberNames.length <= 1) {
+      alert('メンバーが複数人登録されている場合に引き継ぎを行えます。\nメンバーページから追加してください。');
       return;
     }
-    const currentIndex = task.assignees.indexOf(task.currentId || task.assignees[0]);
-    const nextIndex = (currentIndex + 1) % task.assignees.length;
-    const nextAssignee = task.assignees[nextIndex];
+    const currentIndex = allMemberNames.indexOf(task.currentId || allMemberNames[0]);
+    const nextIndex = (currentIndex + 1) % allMemberNames.length;
+    const nextAssignee = allMemberNames[nextIndex];
 
     setTasks(prev => prev.map(t => t.taskId === task.taskId ? { ...t, currentId: nextAssignee } : t));
     if (selectedTask && selectedTask.taskId === task.taskId) {
@@ -265,11 +318,11 @@ export default function App() {
         </div>
         <nav className="flex-1 py-6 flex flex-col gap-2 px-4">
           {NAV_ITEMS.map(item => {
-            const isActive = item.id === 'home' && currentView === 'home';
+            const isActive = item.id === currentView || (item.id === 'home' && currentView === 'gantt');
             return (
               <button 
                 key={`pc-nav-${item.id}`}
-                onClick={() => { if (item.id === 'home') setCurrentView('home'); }} 
+                onClick={() => setCurrentView(item.id as any)} 
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${
                   isActive ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-600 hover:bg-gray-50'
                 }`}
@@ -302,15 +355,19 @@ export default function App() {
             />
           ) : (
             <>
+              {/* プロジェクト内部の共通ヘッダー */}
               <header className="h-16 border-b border-gray-100 px-4 flex items-center justify-between shrink-0 bg-white z-10">
                 <div className="flex items-center text-lg font-bold">
-                  <button onClick={() => setCurrentView('home')} className="mr-3 p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                  <button 
+                    onClick={() => setCurrentView('home')} 
+                    className="mr-3 p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
                   </button> 
                   文化祭2026
                 </div>
 
-                {taskMode === 'prep' && (
+                {currentView === 'gantt' && taskMode === 'prep' && (
                   <div className="flex items-center gap-2">
                     <label htmlFor="yearMonthSelect" className="text-xs font-bold text-gray-500">表示月:</label>
                     <select 
@@ -328,84 +385,109 @@ export default function App() {
                 )}
               </header>
 
-              {/* モード切替タブ */}
-              <div className="bg-white border-b border-gray-100 flex justify-between items-center px-4 py-3 gap-3 shrink-0 z-10">
-                <div className="flex bg-gray-100 rounded-lg p-1 w-full sm:w-auto text-sm shadow-inner">
-                  <button 
-                    onClick={() => setTaskMode('prep')}
-                    className={`flex-1 sm:w-32 py-2 flex items-center justify-center gap-2 font-bold transition-all ${
-                      taskMode === 'prep' ? 'text-gray-800 bg-white rounded-md shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    <span className="text-blue-500">📄</span> 準備モード
-                  </button>
-                  <button 
-                    onClick={() => setTaskMode('day')}
-                    className={`flex-1 sm:w-32 py-2 flex items-center justify-center gap-2 font-bold transition-all ${
-                      taskMode === 'day' ? 'text-gray-800 bg-white rounded-md shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    <span>🕒</span> 当日モード
-                  </button>
-                </div>
-              </div>
-
-              {taskMode === 'prep' ? (
-                <PrepGanttView 
-                  tasks={tasks}
-                  groups={groups}
-                  dates={dates}
-                  onSelectTask={setSelectedTask}
-                  onSelectGroup={setSelectedGroup}
-                  dateRowRefs={dateRowRefs}
+              {/* ビューの切り替え */}
+              {currentView === 'budget' ? (
+                <BudgetView 
+                  totalBudget={totalBudget} 
+                  setTotalBudget={setTotalBudget}
+                  expenses={expenses}
+                  setExpenses={setExpenses}
                 />
-              ) : (
-                <DayTimelineView 
-                  tasks={tasks}
-                  onSelectTask={setSelectedTask}
-                  onHandover={handleHandover}
-                />
-              )}
+              ) : currentView === 'memo' ? (
+                <MemoView memos={memos} setMemos={setMemos} />
+              ) : currentView === 'members' ? (
+                <MemberView members={members} setMembers={setMembers} />
+              ) : currentView === 'gantt' ? (
+                <>
+                  <div className="bg-white border-b border-gray-100 flex justify-between items-center px-4 py-3 gap-3 shrink-0 z-10">
+                    <div className="flex bg-gray-100 rounded-lg p-1 w-full sm:w-auto text-sm shadow-inner">
+                      <button 
+                        onClick={() => setTaskMode('prep')}
+                        className={`flex-1 sm:w-32 py-2 flex items-center justify-center gap-2 font-bold transition-all ${
+                          taskMode === 'prep' ? 'text-gray-800 bg-white rounded-md shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        <span className="text-blue-500">📄</span> 準備モード
+                      </button>
+                      <button 
+                        onClick={() => setTaskMode('day')}
+                        className={`flex-1 sm:w-32 py-2 flex items-center justify-center gap-2 font-bold transition-all ${
+                          taskMode === 'day' ? 'text-gray-800 bg-white rounded-md shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        <span>🕒</span> 当日モード
+                      </button>
+                    </div>
+                  </div>
 
-              <div className="absolute bottom-20 md:bottom-8 right-4 md:right-8 z-30">
-                <button 
-                  onClick={handleOpenModal}
-                  className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-bold p-4 md:py-3 md:px-6 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl hover:-translate-y-1"
-                >
-                  <span className="hidden md:inline">{taskMode === 'prep' ? '準備タスクを追加' : '当日タスクを追加'}</span>
-                  <span className="text-2xl font-light leading-none">＋</span>
-                </button>
-              </div>
+                  {taskMode === 'prep' ? (
+                    <PrepGanttView 
+                      tasks={tasks}
+                      groups={groups}
+                      dates={dates}
+                      onSelectTask={setSelectedTask}
+                      onSelectGroup={setSelectedGroup}
+                      dateRowRefs={dateRowRefs}
+                    />
+                  ) : (
+                    <DayTimelineView 
+                      tasks={tasks}
+                      timeSlots={dynamicTimeSlots}
+                      onSelectTask={setSelectedTask}
+                      onHandover={handleHandover}
+                    />
+                  )}
+
+                  <div className="absolute bottom-20 md:bottom-8 right-4 md:right-8 z-30">
+                    <button 
+                      onClick={handleOpenModal}
+                      className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-bold p-4 md:py-3 md:px-6 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl hover:-translate-y-1"
+                    >
+                      <span className="hidden md:inline">{taskMode === 'prep' ? '準備タスクを追加' : '当日タスクを追加'}</span>
+                      <span className="text-2xl font-light leading-none">＋</span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </>
           )}
         </div>
       </main>
 
-      {/* ボトムナビゲーション */}
-      <nav className="md:hidden fixed bottom-0 w-full h-16 bg-white border-t border-gray-200 flex justify-around items-center text-[10px] text-gray-500 z-40 pb-safe">
-        {NAV_ITEMS.map(item => {
-          const isActive = item.id === 'home' && currentView === 'home';
-          return (
-            <button 
-              key={`mobile-nav-${item.id}`}
-              onClick={() => { if (item.id === 'home') setCurrentView('home'); }} 
-              className={`flex flex-col items-center transition-colors ${
-                isActive ? 'text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.iconPath} />
-              </svg>
-              <span className={isActive ? "font-bold" : ""}>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {/* ボトムナビゲーション (ホーム画面以外で表示) */}
+      {currentView !== 'home' && (
+        <nav className="md:hidden fixed bottom-0 w-full h-16 bg-white border-t border-gray-200 flex justify-around items-center text-[10px] text-gray-500 z-40 pb-safe">
+          {NAV_ITEMS.map(item => {
+            const isActive = item.id === currentView || (item.id === 'home' && currentView === 'gantt');
+              
+            return (
+              <button 
+                key={`mobile-nav-${item.id}`}
+                onClick={() => setCurrentView(item.id as any)} 
+                className={`flex flex-col items-center transition-colors ${
+                  isActive ? 'text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.iconPath} />
+                </svg>
+                <span className={isActive ? "font-bold" : ""}>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {/* --- グループ詳細・削除モーダル --- */}
       {selectedGroup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-6 flex flex-col gap-4">
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedGroup(null)}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-6 flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="font-extrabold text-lg text-gray-800">グループ: {selectedGroup.name}</h3>
               <button onClick={() => setSelectedGroup(null)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
@@ -461,8 +543,14 @@ export default function App() {
 
       {/* --- 新規タスク追加モーダル --- */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 sm:flex sm:items-center sm:justify-center z-50 p-4">
-          <div className="w-full bg-white rounded-xl shadow-xl flex flex-col overflow-hidden max-w-sm mx-auto max-h-[90vh]">
+        <div 
+          className="fixed inset-0 bg-black/50 sm:flex sm:items-center sm:justify-center z-50 p-4"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div 
+            className="w-full bg-white rounded-xl shadow-xl flex flex-col overflow-hidden max-w-sm mx-auto max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
             
             <div className="flex justify-between items-center p-4 border-b border-gray-100 shrink-0">
               <h2 className="font-bold text-gray-800 text-lg">
@@ -531,22 +619,6 @@ export default function App() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">割り当てメンバー</label>
-                <div className="flex items-center gap-2 border border-gray-300 rounded-md p-2 min-h-13 bg-white">
-                  <div className="flex flex-wrap gap-2 items-center flex-1">
-                    {newTaskAssignees.map((name) => {
-                      const colorClass = 'bg-pink-500';
-                      return (
-                        <span key={name} className={`${colorClass} text-white w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shadow-sm`}>
-                          {name}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
               {taskMode === 'prep' ? (
                 <div className="flex items-center gap-2 bg-gray-200 rounded-md p-2">
                   <div className="flex items-center gap-1 flex-1">
@@ -571,7 +643,6 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                /* iPhoneのアラーム風 分単位対応 時間設定（<input type="time">） */
                 <div className="bg-gray-100 rounded-xl p-3 border border-gray-200 flex flex-col gap-2">
                   <span className="text-xs font-bold text-gray-500 text-center">⏰ アラーム風 時間設定（分単位）</span>
                   <div className="flex items-center justify-center gap-3">
@@ -615,8 +686,14 @@ export default function App() {
 
       {/* --- タスク詳細・編集・削除モーダル --- */}
       {selectedTask && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden relative max-h-[90vh] flex flex-col">
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setSelectedTask(null)}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden relative max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-lg text-gray-800">タスク編集・詳細</h3>

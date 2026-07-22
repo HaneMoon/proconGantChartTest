@@ -31,15 +31,58 @@ export type Task = {
   remind?: string;
 };
 
+export type Expense = {
+  id: string;
+  category: string;
+  amount: number;
+  color: string;
+};
+
+export type Reaction = {
+  text: string;
+  count: number;
+};
+
+export type Memo = {
+  id: string;
+  authorName: string;
+  authorColor: string;
+  content: string;
+  reactions: Reaction[];
+};
+
+export type Member = {
+  id: string;
+  name: string;
+  color: string;
+};
+
 export const initialGroups: Group[] = [
   { id: 'g1', name: '企画' },
   { id: 'g2', name: '調理' },
   { id: 'g3', name: '装飾' },
 ];
 
-export const mockMembers = ['佐藤', '鈴木', '花子', '田中', '高橋'];
+export const initialMembers: Member[] = [
+  { id: 'm1', name: '佐藤', color: 'bg-pink-500' },
+  { id: 'm2', name: '鈴木', color: 'bg-purple-500' },
+  { id: 'm3', name: '花子', color: 'bg-indigo-500' },
+  { id: 'm4', name: '田中', color: 'bg-sky-500' },
+  { id: 'm5', name: '山田', color: 'bg-green-500' },
+];
 
-export const timeSlots = ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00'];
+export const initialExpenses: Expense[] = [
+  { id: 'e1', category: '景品費', amount: 36000, color: '#ef4444' }, // red-500
+  { id: 'e2', category: '材料費', amount: 11200, color: '#f97316' }, // orange-500
+  { id: 'e3', category: '装飾費', amount: 8000, color: '#eab308' },  // yellow-500
+  { id: 'e4', category: '備品費', amount: 4800, color: '#22c55e' },  // green-500
+  { id: 'e5', category: 'その他', amount: 3200, color: '#3b82f6' },  // blue-500
+];
+
+export const initialMemos: Memo[] = [
+  { id: 'memo1', authorName: '佐藤', authorColor: 'bg-pink-500', content: '企画考案、予定より2日早く終わりました', reactions: [{ text: '偉業', count: 6 }] },
+  { id: 'memo2', authorName: '佐藤', authorColor: 'bg-pink-500', content: '一人あたり5個の案×3人でうまくまわせました', reactions: [{ text: '👍', count: 3 }] },
+];
 
 export const NAV_ITEMS = [
   { id: 'home', label: 'ホーム', iconPath: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
