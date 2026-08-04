@@ -1,33 +1,56 @@
 import { useState } from 'react';
-import type { Member, Task } from './types';
+import type { Member, Task, Group, ConfirmOptions } from './types';
 
 type MemberViewProps = {
+  activeProjectId: string;
+  groups: Group[];
   members: Member[];
   setMembers: (members: Member[]) => void;
   tasks: Task[];
+  isReadOnly?: boolean;
+  requestConfirm: (options: ConfirmOptions) => void;
 };
 
-export default function MemberView({ members, setMembers, tasks }: MemberViewProps) {
+export default function MemberView({ activeProjectId, groups, members, setMembers, tasks, isReadOnly = false, requestConfirm }: MemberViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMemberTasks, setSelectedMemberTasks] = useState<{member: Member, tasks: Task[]} | null>(null);
 
-  const handleAddMember = () => {
-    const name = window.prompt('招待するメンバーの名前を入力してください:');
-    if (!name) return;
-    
+  // メンバー追加用サイドパネルの開閉状態
+  const [isAddPanelOpen, setIsAddPanelOpen] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+
+  const handleOpenAddMemberPanel = () => {
+    if (isReadOnly) return;
+    setNewMemberName('');
+    setIsAddPanelOpen(true);
+  };
+
+  const submitAddMember = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberName.trim()) return;
+
     const colors = ['bg-pink-500', 'bg-purple-500', 'bg-indigo-500', 'bg-sky-500', 'bg-green-500', 'bg-red-500', 'bg-yellow-500'];
     const newMember: Member = {
       id: `m_${Date.now()}`,
-      name,
+      projectId: activeProjectId,
+      name: newMemberName.trim(),
       color: colors[members.length % colors.length]
     };
+
     setMembers([...members, newMember]);
+    setNewMemberName('');
+    setIsAddPanelOpen(false);
   };
 
   const handleDeleteMember = (id: string, name: string) => {
-    if (window.confirm(`${name}さんをメンバーから削除しますか？`)) {
-      setMembers(members.filter(m => m.id !== id));
-    }
+    if (isReadOnly) return;
+    requestConfirm({
+      title: 'メンバーの削除',
+      message: `${name}さんをメンバーから削除しますか？\n（割り当てられていたタスクの担当者名はそのまま残ります）`,
+      confirmText: '削除する',
+      isDanger: true,
+      onConfirm: () => setMembers(members.filter(m => m.id !== id))
+    });
   };
 
   const showMemberTasks = (member: Member) => {
@@ -56,9 +79,6 @@ export default function MemberView({ members, setMembers, tasks }: MemberViewPro
             onChange={(e) => setSearchQuery(e.target.value)}
             className="flex-1 outline-none text-sm font-medium p-1"
           />
-          <button onClick={handleAddMember} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-4 py-1.5 rounded transition-colors">
-            招待
-          </button>
         </div>
 
         <div className="flex flex-col gap-4">
@@ -76,25 +96,62 @@ export default function MemberView({ members, setMembers, tasks }: MemberViewPro
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => showMemberTasks(m)}
-                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold px-3 py-2 rounded-lg transition-colors"
-                  >
-                    担当タスクを表示
+                  <button onClick={() => showMemberTasks(m)} className="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold px-3 py-2 rounded-lg transition-colors">
+                    担当タスク
                   </button>
-                  {!m.isMe && (
-                    <button 
-                      onClick={() => handleDeleteMember(m.id, m.name)}
-                      className="text-gray-300 hover:text-red-500 px-2 transition-colors font-bold text-lg"
-                      title="削除"
-                    >
-                      &times;
-                    </button>
+                  {!m.isMe && !isReadOnly && (
+                    <button onClick={() => handleDeleteMember(m.id, m.name)} className="text-gray-300 hover:text-red-500 px-2 font-bold text-lg">&times;</button>
                   )}
                 </div>
               </div>
             ))
           )}
+        </div>
+      </div>
+
+      {/* メンバー招待ボタン (読み取り専用でなければ表示) */}
+      {!isReadOnly && (
+        <div className="absolute bottom-20 md:bottom-8 right-4 md:right-8 z-30">
+          <button 
+            onClick={handleOpenAddMemberPanel}
+            className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-bold p-4 md:py-3 md:px-6 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl hover:-translate-y-1"
+          >
+            <span className="hidden md:inline">メンバーを招待</span>
+            <span className="text-2xl font-light leading-none">＋</span>
+          </button>
+        </div>
+      )}
+
+      {/* --- 専用サイドパネル UI (メンバー追加) --- */}
+      {isAddPanelOpen && (
+        <div className="absolute inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setIsAddPanelOpen(false)} />
+      )}
+
+      <div className={`absolute top-0 right-0 h-full w-full lg:w-96 bg-white shadow-2xl border-l border-gray-200 transform transition-transform duration-300 z-50 flex flex-col ${isAddPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50 shrink-0">
+          <h3 className="font-extrabold text-lg text-gray-800">メンバーを招待</h3>
+          <button onClick={() => setIsAddPanelOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+          <form onSubmit={submitAddMember} className="flex flex-col gap-5 h-full">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1">メンバーの名前</label>
+              <input 
+                type="text" 
+                required 
+                value={newMemberName} 
+                onChange={e => setNewMemberName(e.target.value)} 
+                className="w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" 
+                placeholder="例: 山田 太郎" 
+              />
+            </div>
+            <div className="mt-auto pt-4">
+              <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-sm hover:bg-blue-700 transition-colors">
+                追加する
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 
@@ -110,27 +167,33 @@ export default function MemberView({ members, setMembers, tasks }: MemberViewPro
               </div>
               <button onClick={() => setSelectedMemberTasks(null)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
             </div>
-
             <div className="overflow-y-auto flex flex-col gap-3">
               {selectedMemberTasks.tasks.length === 0 ? (
-                <p className="text-gray-400 text-center font-bold text-sm my-4">担当しているタスクはありません</p>
+                 <p className="text-gray-400 text-center font-bold text-sm my-4">担当タスクはありません</p>
               ) : (
                 selectedMemberTasks.tasks.map(t => (
                   <div key={t.taskId} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="flex gap-2 mb-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.taskMode === 'prep' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
+                        {t.taskMode === 'prep' ? '準備' : '当日'}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">
+                        {groups.find(g => g.id === t.group)?.name || '未設定'}
+                      </span>
+                    </div>
                     <div className="flex justify-between items-start mb-1">
                       <span className="font-bold text-gray-800 text-sm">{t.taskName}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.taskStatus === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.taskStatus === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
                         {t.taskStatus === 'completed' ? '完了' : '進行中'}
                       </span>
                     </div>
                     <p className="text-xs font-bold text-gray-500">
-                      {t.taskMode === 'prep' ? `${t.startDate} 〜 ${t.endDate}` : `当日: ${t.startTime} 〜 ${t.endTime}`}
+                      {t.taskMode === 'prep' ? `${t.startDate} 〜 ${t.endDate}` : `${t.startTime} 〜 ${t.endTime}`}
                     </p>
                   </div>
                 ))
               )}
             </div>
-
             <div className="pt-2 shrink-0">
               <button onClick={() => setSelectedMemberTasks(null)} className="w-full py-2.5 border rounded-lg font-bold text-gray-700 hover:bg-gray-50">閉じる</button>
             </div>

@@ -1,63 +1,57 @@
 import { useMemo, useState } from 'react';
-import type { Expense } from './types';
+import type { Expense, ConfirmOptions } from './types';
 
 type BudgetViewProps = {
+  activeProjectId: string;
   totalBudget: number;
   setTotalBudget: (amount: number) => void;
   expenses: Expense[];
   setExpenses: (expenses: Expense[]) => void;
+  isReadOnly?: boolean;
+  requestConfirm: (options: ConfirmOptions) => void;
 };
 
-export default function BudgetView({ totalBudget, setTotalBudget, expenses, setExpenses }: BudgetViewProps) {
+export default function BudgetView({ activeProjectId, totalBudget, setTotalBudget, expenses, setExpenses, isReadOnly = false, requestConfirm }: BudgetViewProps) {
   
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [editBudgetValue, setEditBudgetValue] = useState('');
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  
   const [expenseCategory, setExpenseCategory] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseMemo, setExpenseMemo] = useState('');
   const [expenseColor, setExpenseColor] = useState('#ef4444');
 
-  const totalExpenseAmount = useMemo(() => expenses.reduce((sum, e) => sum + e.amount, 0), [expenses]);
+  const totalExpenseAmount = useMemo(() => (expenses || []).reduce((sum, e) => sum + e.amount, 0), [expenses]);
   const balance = totalBudget - totalExpenseAmount;
 
   const pieChartData = useMemo(() => {
     if (totalExpenseAmount === 0) return { background: '#e5e7eb', labels: [] };
-
     let currentPercent = 0;
     const gradientStops: string[] = [];
     const labels: { id: string; x: number; y: number; text: string }[] = [];
-
-    expenses.forEach((e) => {
+    
+    (expenses || []).forEach((e) => {
       const percent = (e.amount / totalExpenseAmount) * 100;
       if (percent > 0) {
         const start = currentPercent;
         const end = currentPercent + percent;
         gradientStops.push(`${e.color} ${start}% ${end}%`);
-
         const middleAngle = (start + percent / 2) * 360 / 100; 
         const rad = (middleAngle - 90) * (Math.PI / 180);
         const radius = 35;
-        labels.push({
-          id: e.id,
-          x: 50 + radius * Math.cos(rad),
-          y: 50 + radius * Math.sin(rad),
-          text: `${Math.round(percent)}%`
-        });
-
+        labels.push({ id: e.id, x: 50 + radius * Math.cos(rad), y: 50 + radius * Math.sin(rad), text: `${Math.round(percent)}%` });
         currentPercent = end;
       }
     });
-
-    return {
-      background: `conic-gradient(${gradientStops.join(', ')})`,
-      labels
-    };
+    return { background: `conic-gradient(${gradientStops.join(', ')})`, labels };
   }, [expenses, totalExpenseAmount]);
 
   const saveBudget = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnly) return;
     const val = Number(editBudgetValue);
     if (!isNaN(val)) {
       setTotalBudget(val);
@@ -66,40 +60,53 @@ export default function BudgetView({ totalBudget, setTotalBudget, expenses, setE
   };
 
   const openAddExpenseModal = () => {
+    if (isReadOnly) return;
     setEditingExpense(null);
     setExpenseCategory('');
     setExpenseAmount('');
+    setExpenseMemo('');
     const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'];
-    setExpenseColor(colors[expenses.length % colors.length]);
+    setExpenseColor(colors[(expenses || []).length % colors.length]);
     setIsExpenseModalOpen(true);
   };
 
-  const openEditExpenseModal = (expense: Expense) => {
+  const openEditExpenseModal = (expense: Expense, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isReadOnly) return;
     setEditingExpense(expense);
     setExpenseCategory(expense.category);
     setExpenseAmount(String(expense.amount));
+    setExpenseMemo(expense.memo || '');
     setExpenseColor(expense.color);
     setIsExpenseModalOpen(true);
   };
 
   const saveExpense = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isReadOnly) return;
     const amt = Number(expenseAmount);
     if (!expenseCategory.trim() || isNaN(amt)) return;
 
     if (editingExpense) {
-      setExpenses(expenses.map(exp => exp.id === editingExpense.id ? { ...exp, category: expenseCategory, amount: amt, color: expenseColor } : exp));
+      setExpenses((expenses || []).map(exp => exp.id === editingExpense.id ? { ...exp, category: expenseCategory, amount: amt, memo: expenseMemo, color: expenseColor } : exp));
     } else {
-      setExpenses([...expenses, { id: `e_${Date.now()}`, category: expenseCategory, amount: amt, color: expenseColor }]);
+      setExpenses([...(expenses || []), { id: `e_${Date.now()}`, projectId: activeProjectId, category: expenseCategory, amount: amt, memo: expenseMemo, color: expenseColor }]);
     }
     setIsExpenseModalOpen(false);
   };
 
   const deleteExpense = () => {
-    if (editingExpense && window.confirm('このカテゴリを削除しますか？')) {
-      setExpenses(expenses.filter(e => e.id !== editingExpense.id));
-      setIsExpenseModalOpen(false);
-    }
+    if (isReadOnly || !editingExpense) return;
+    requestConfirm({
+      title: '支出記録の削除',
+      message: 'この支出記録を削除しますか？',
+      confirmText: '削除する',
+      isDanger: true,
+      onConfirm: () => {
+        setExpenses((expenses || []).filter(e => e.id !== editingExpense.id));
+        setIsExpenseModalOpen(false);
+      }
+    });
   };
 
   return (
@@ -133,145 +140,122 @@ export default function BudgetView({ totalBudget, setTotalBudget, expenses, setE
                 </p>
               </div>
             </div>
-            <div className="mt-4 flex justify-end">
-              <button 
-                onClick={() => { setEditBudgetValue(String(totalBudget)); setIsBudgetModalOpen(true); }} 
-                className="bg-blue-600/90 text-white text-xs font-bold px-6 py-1.5 rounded hover:bg-blue-700 transition-colors"
-              >
-                編集
-              </button>
-            </div>
+            {!isReadOnly && (
+              <div className="mt-4 flex justify-end">
+                <button 
+                  onClick={() => { setEditBudgetValue(String(totalBudget)); setIsBudgetModalOpen(true); }} 
+                  className="bg-blue-600/90 text-white text-xs font-bold px-6 py-1.5 rounded hover:bg-blue-700"
+                >
+                  編集
+                </button>
+              </div>
+            )}
           </div>
         </section>
 
         <section>
-          <h2 className="font-bold text-gray-800 mb-2">支出カテゴリ</h2>
+          <h2 className="font-bold text-gray-800 mb-2">支出履歴</h2>
           <div className="bg-white rounded-xl border border-gray-300 shadow-sm p-4">
             <div className="flex flex-col sm:flex-row items-center gap-8 mb-4">
               
               <div className="relative w-40 h-40 shrink-0 rounded-full shadow-sm" style={{ background: pieChartData.background }}>
                 <div className="absolute inset-0 m-auto w-20 h-20 bg-white rounded-full"></div>
                 {pieChartData.labels.map(l => (
-                  <span 
-                    key={l.id} 
-                    className="absolute text-[11px] font-extrabold text-white"
-                    style={{ left: `${l.x}%`, top: `${l.y}%`, transform: 'translate(-50%, -50%)', textShadow: '0px 0px 3px rgba(0,0,0,0.8)' }}
-                  >
+                  <span key={l.id} className="absolute text-[11px] font-extrabold text-white" style={{ left: `${l.x}%`, top: `${l.y}%`, transform: 'translate(-50%, -50%)', textShadow: '0px 0px 3px rgba(0,0,0,0.8)' }}>
                     {l.text}
                   </span>
                 ))}
               </div>
 
-              <div className="flex-1 w-full text-sm font-bold text-gray-800 flex flex-col gap-2.5">
-                {expenses.length === 0 ? (
-                  <p className="text-gray-400 text-center">データがありません</p>
+              <div className="flex-1 w-full text-sm flex flex-col gap-2">
+                {(!expenses || expenses.length === 0) ? (
+                  <p className="text-gray-400 text-center font-bold">データがありません</p>
                 ) : (
                   expenses.map(e => (
-                    <div key={e.id} className="flex justify-between items-center group">
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: e.color }}></span>
-                        {e.category}
+                    <div 
+                      key={e.id} 
+                      className={`group ${!isReadOnly ? 'cursor-pointer hover:bg-gray-50' : ''} p-3 rounded-xl border border-transparent hover:border-gray-200 transition-all`}
+                      onClick={(ev) => !isReadOnly && openEditExpenseModal(e, ev)}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full shadow-sm mt-0.5" style={{ backgroundColor: e.color }}></span>
+                          <span className="font-bold text-gray-800">{e.category}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-extrabold text-gray-800">{e.amount.toLocaleString()} <span className="text-xs font-normal">円</span></span>
+                          {!isReadOnly && <span className="text-xs text-gray-400 md:opacity-0 group-hover:opacity-100 transition-opacity">✎ 編集</span>}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium">{e.amount.toLocaleString()}円</span>
-                        <button 
-                          onClick={() => openEditExpenseModal(e)} 
-                          className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-600 transition-colors"
-                        >
-                          編集
-                        </button>
-                      </div>
+                      {e.memo && <p className="text-xs text-gray-500 ml-5 line-clamp-2 leading-relaxed">{e.memo}</p>}
                     </div>
                   ))
                 )}
               </div>
             </div>
 
-            <div className="flex justify-start items-center mt-8">
-              <button onClick={openAddExpenseModal} className="bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1.5 hover:bg-gray-700 transition-colors">
-                項目を追加 <span className="text-[10px] font-extrabold leading-none bg-white text-gray-600 rounded-full w-3.5 h-3.5 flex items-center justify-center">＋</span>
-              </button>
-            </div>
+            {!isReadOnly && (
+              <div className="flex justify-start items-center mt-6">
+                <button onClick={openAddExpenseModal} className="bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1.5 hover:bg-gray-700 transition-colors">
+                  支出を記録する <span className="text-[10px] font-extrabold leading-none bg-white text-gray-600 rounded-full w-3.5 h-3.5 flex items-center justify-center">＋</span>
+                </button>
+              </div>
+            )}
           </div>
         </section>
       </div>
 
-      {/* --- 全体予算 編集モーダル --- */}
       {isBudgetModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsBudgetModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60 p-4" onClick={() => setIsBudgetModalOpen(false)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="font-bold text-lg text-gray-800">全体予算の編集</h3>
-              <button onClick={() => setIsBudgetModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+              <button onClick={() => setIsBudgetModalOpen(false)} className="text-gray-400">&times;</button>
             </div>
             <form onSubmit={saveBudget} className="p-6 flex flex-col gap-4">
               <div>
                 <label className="block text-sm font-bold text-gray-500 mb-1">金額 (円)</label>
-                <input 
-                  type="number" 
-                  value={editBudgetValue}
-                  onChange={(e) => setEditBudgetValue(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-2 font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
-                />
+                <input type="number" value={editBudgetValue} onChange={(e) => setEditBudgetValue(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2 font-bold outline-none focus:ring-2 focus:ring-blue-500" required />
               </div>
               <div className="mt-4 pt-4 border-t border-gray-100 flex gap-3">
-                <button type="button" onClick={() => setIsBudgetModalOpen(false)} className="flex-1 py-2.5 border rounded-lg font-bold text-gray-700 hover:bg-gray-50">キャンセル</button>
-                <button type="submit" className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">保存</button>
+                <button type="button" onClick={() => setIsBudgetModalOpen(false)} className="flex-1 py-2.5 border rounded-lg font-bold">キャンセル</button>
+                <button type="submit" className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg font-bold">保存</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* --- 支出カテゴリ 追加/編集モーダル --- */}
       {isExpenseModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsExpenseModalOpen(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60 p-4" onClick={() => setIsExpenseModalOpen(false)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-lg text-gray-800">{editingExpense ? '支出の編集' : '新規支出カテゴリ'}</h3>
-              <button onClick={() => setIsExpenseModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+              <h3 className="font-bold text-lg text-gray-800">{editingExpense ? '支出の編集' : '新規支出の記録'}</h3>
+              <button onClick={() => setIsExpenseModalOpen(false)} className="text-gray-400 text-2xl leading-none">&times;</button>
             </div>
             <form onSubmit={saveExpense} className="p-6 flex flex-col gap-4">
               <div>
-                <label className="block text-sm font-bold text-gray-500 mb-1">カテゴリ名</label>
-                <input 
-                  type="text" 
-                  value={expenseCategory}
-                  onChange={(e) => setExpenseCategory(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-2 font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
-                />
+                <label className="block text-sm font-bold text-gray-500 mb-1">カテゴリ名 (例: 備品費)</label>
+                <input type="text" value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2 font-bold outline-none focus:ring-2 focus:ring-blue-500" required />
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-500 mb-1">金額 (円)</label>
-                <input 
-                  type="number" 
-                  value={expenseAmount}
-                  onChange={(e) => setExpenseAmount(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-2 font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
-                />
+                <input type="number" value={expenseAmount} onChange={(e) => setExpenseAmount(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2 font-bold outline-none focus:ring-2 focus:ring-blue-500" required />
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-500 mb-2">カラー</label>
+                <label className="block text-sm font-bold text-gray-500 mb-1">メモ (何を買った？)</label>
+                <textarea value={expenseMemo} onChange={(e) => setExpenseMemo(e.target.value)} className="w-full border border-gray-300 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" rows={2} placeholder="画用紙、ペンなど..." />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-500 mb-2">カテゴリカラー</label>
                 <div className="flex gap-3">
                   {['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'].map(c => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setExpenseColor(c)}
-                      className={`w-8 h-8 rounded-full shadow-sm transition-transform ${expenseColor === c ? 'ring-2 ring-offset-2 ring-gray-800 scale-110' : 'hover:scale-110'}`}
-                      style={{ backgroundColor: c }}
-                    />
+                    <button key={c} type="button" onClick={() => setExpenseColor(c)} className={`w-8 h-8 rounded-full shadow-sm transition-transform ${expenseColor === c ? 'ring-2 ring-offset-2 ring-gray-800 scale-110' : 'hover:scale-110'}`} style={{ backgroundColor: c }} />
                   ))}
                 </div>
               </div>
               <div className="mt-4 pt-4 border-t border-gray-100 flex gap-3">
-                {editingExpense && (
-                  <button type="button" onClick={deleteExpense} className="flex-1 py-2.5 bg-white border border-red-200 text-red-500 font-bold rounded-lg hover:bg-red-50">削除</button>
-                )}
-                <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="flex-1 py-2.5 border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50">キャンセル</button>
+                {editingExpense && <button type="button" onClick={deleteExpense} className="flex-1 py-2.5 bg-white border border-red-200 text-red-500 font-bold rounded-lg hover:bg-red-50">削除</button>}
                 <button type="submit" className="flex-1 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700">保存</button>
               </div>
             </form>
