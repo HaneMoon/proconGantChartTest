@@ -67,40 +67,32 @@ export default function DayTimelineView({ tasks, timeSlots, onSelectTask, onHand
   }
 
   return (
-    // paddingを完全に取り除き、全画面を使ってスクロールさせます。
-    <div className="flex-1 overflow-auto bg-white relative w-full h-full mb-16 md:mb-0">
+    <div className="flex-1 overflow-auto bg-white relative w-full h-full">
       <div
-        className="grid min-w-max"
+        className="grid w-full"
         style={{
-          gridTemplateColumns: `70px repeat(${totalCols - 1}, minmax(100px, 1fr))`,
+          // 各タスク列の最大幅を 80px に制限
+          gridTemplateColumns: `70px repeat(${totalCols - 1}, minmax(40px, 80px))`,
           gridTemplateRows: `48px repeat(${timeSlots.length}, 60px)`
         }}
       >
-        {/* --- 1行目: ヘッダー行 --- */}
-        {/* 左上の固定セル (時間) */}
         <div className="sticky top-0 left-0 z-50 flex items-center justify-center text-xs font-bold text-gray-600 bg-gray-100 border-b border-r border-gray-300 shadow-[0_2px_0_0_#e5e7eb]" style={{ gridRow: 1, gridColumn: 1 }}>
           時間
         </div>
         
-        {/* ヘッダー背景（右に伸びる影用） */}
         <div 
           className="sticky top-0 z-40 col-span-full bg-white border-b border-gray-300 shadow-sm pointer-events-none" 
           style={{ gridRow: 1, gridColumn: `2 / span ${totalCols - 1}` }}
         />
 
-        {/* ヘッダー (常駐タスク) */}
         <div className="sticky top-0 z-45 flex items-center justify-center text-sm font-bold text-pink-700 bg-pink-50 border-r border-pink-200" style={{ gridRow: 1, gridColumn: `${residentStartCol} / span ${layoutData.maxColsMap.resident}` }}>
           📌 常駐タスク
         </div>
         
-        {/* ヘッダー (個別タスク) */}
         <div className="sticky top-0 z-45 flex items-center justify-center text-sm font-bold text-blue-700 bg-blue-50 border-r border-blue-200" style={{ gridRow: 1, gridColumn: `${individualStartCol} / span ${layoutData.maxColsMap.individual}` }}>
           ⚡ 個別タスク
         </div>
 
-
-        {/* --- 2行目以降: コンテンツ --- */}
-        {/* 時間列 (左固定) */}
         {timeSlots.map((time, index) => (
           <div
             key={time}
@@ -111,7 +103,6 @@ export default function DayTimelineView({ tasks, timeSlots, onSelectTask, onHand
           </div>
         ))}
 
-        {/* グリッドの線描画 (背景) */}
         {timeSlots.map((_, i) => (
           <div key={`d-row-${i}`} className="col-span-full border-b border-gray-100 pointer-events-none" style={{ gridRow: i + 2 }} />
         ))}
@@ -119,7 +110,6 @@ export default function DayTimelineView({ tasks, timeSlots, onSelectTask, onHand
           <div key={`d-col-${i}`} className="row-span-full border-r border-gray-50 pointer-events-none" style={{ gridColumn: i + 2, gridRow: `2 / span ${timeSlots.length}` }} />
         ))}
 
-        {/* タスク配置 */}
         {tasks.filter(t => t.taskMode === 'day').map(t => {
           const start = getRowByTimeString(t.startTime, false);
           let end = getRowByTimeString(t.endTime, true);
@@ -146,7 +136,7 @@ export default function DayTimelineView({ tasks, timeSlots, onSelectTask, onHand
                 gridColumn: colIndex,
               }}
             >
-              <div className="sticky top-14 flex flex-col gap-2 p-3 w-full">
+              <div className="sticky top-25 flex flex-col gap-2 p-3 w-full">
                 <div className="flex justify-between items-start">
                   <span className="font-extrabold text-base tracking-wide drop-shadow-sm">{t.taskName}</span>
                   <div className="flex items-center gap-1 shrink-0">

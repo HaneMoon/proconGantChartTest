@@ -90,7 +90,6 @@ export type ConfirmOptions = {
   onConfirm: () => void;
 };
 
-// --- すべて空の状態でスタートするように変更 ---
 export const initialGroups: Group[] = [];
 export const initialMembers: Member[] = [];
 export const initialExpenses: Expense[] = [];

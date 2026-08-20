@@ -75,15 +75,15 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-white relative w-full h-full mb-16 md:mb-0">
+    <div className="flex-1 overflow-auto bg-white relative w-full h-full">
       <div 
-        className="grid min-w-max"
+        className="grid w-full"
         style={{
-          gridTemplateColumns: `60px repeat(${totalCols - 2}, minmax(80px, 1fr)) 80px`,
+          // 各サブカラムの最大幅を 80px (スマホ画面の約1/5) に制限
+          gridTemplateColumns: `60px repeat(${totalCols - 2}, minmax(40px, 80px)) 80px`,
           gridTemplateRows: `56px repeat(${dates.length}, 60px)`
         }}
       >
-        {/* --- 1行目: ヘッダー行 --- */}
         <div 
           className="sticky top-0 left-0 z-50 bg-white border-b border-r border-gray-300 shadow-[0_2px_0_0_#e5e7eb]" 
           style={{ gridRow: 1, gridColumn: 1 }}
@@ -94,15 +94,13 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
           style={{ gridRow: 1, gridColumn: `2 / span ${totalCols - 1}` }}
         />
 
-        {/* 未グループ化ヘッダー */}
         <div 
           className="sticky top-0 z-45 flex items-center justify-center text-xs font-bold text-gray-400 bg-white border-r border-gray-200"
           style={{ gridRow: 1, gridColumn: `${groupStartCol['']} / span ${groupMaxCols['']}` }}
         >
-          未グループ化
+          未分類
         </div>
 
-        {/* グループ名ヘッダー */}
         {groups.map(g => (
           <div
             key={g.id}
@@ -116,7 +114,6 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
           </div>
         ))}
 
-        {/* 追加ボタン */}
         <div
           onClick={onAddGroup}
           className="sticky top-0 z-45 flex items-center justify-center text-sm font-bold text-gray-500 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
@@ -125,8 +122,6 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
           ＋グループ
         </div>
 
-
-        {/* --- グループごとの背景フレーム（スイムレーン線） --- */}
         {allGroupIds.map((gid: string) => (
           <div
             key={`swimlane-${gid}`}
@@ -139,9 +134,6 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
           />
         ))}
 
-
-        {/* --- 2行目以降: コンテンツ --- */}
-        {/* 日付列 (左固定) */}
         {dates.map((d, index) => (
           <div
             key={d.dateString}
@@ -154,7 +146,6 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
           </div>
         ))}
 
-        {/* グリッドの線描画 (背景) */}
         {dates.map((_, i) => (
           <div key={`border-row-${i}`} className="col-span-full border-b border-gray-100 pointer-events-none" style={{ gridRow: i + 2 }} />
         ))}
@@ -162,7 +153,6 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
           <div key={`border-col-${i}`} className="row-span-full border-r border-gray-50 pointer-events-none" style={{ gridColumn: i + 2, gridRow: `2 / span ${dates.length}` }} />
         ))}
 
-        {/* タスク配置 */}
         {tasks.filter(t => t.taskMode === 'prep').map(t => {
           const start = getRowByDateString(t.startDate);
           const end = getRowByDateString(t.endDate) + 1; 
@@ -186,7 +176,7 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
                 gridColumn: colIndex,
               }}
             >
-              <div className="sticky top-16 flex flex-col items-center justify-start py-2 w-full">
+              <div className="sticky top-27.5 flex flex-col items-center justify-start py-2 w-full">
                 <div className="relative h-5 w-full flex justify-center mb-1">
                   {isCompleted && <span className="absolute text-white bg-green-500 rounded-full w-4 h-4 flex items-center justify-center text-[10px]">✓</span>}
                   {t.needHelp && <span className="absolute right-0 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full shadow-md animate-bounce">🆘</span>}

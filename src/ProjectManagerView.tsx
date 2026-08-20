@@ -1,12 +1,12 @@
-import { useState, useRef, useMemo } from 'react';
-import type { User, Project, Task, Group, Expense, Memo, Member, ConfirmOptions, DateItem } from './types';
-import { NAV_ITEMS } from './types';
+import { useState, useMemo, useRef } from 'react';
+import type { Project, Task, Group, Expense, Memo, Member, User, ConfirmOptions } from './types';
 import PrepGanttView from './PrepGanttView';
 import DayTimelineView from './DayTimelineView';
 import BudgetView from './BudgetView';
 import MemoView from './MemoView';
 import MemberView from './MemberView';
 import RetrospectiveView from './RetrospectiveView';
+import ProjectSettingsView from './ProjectSettingsView';
 
 type ProjectManagerViewProps = {
   project: Project;
@@ -23,45 +23,39 @@ type ProjectManagerViewProps = {
   setMemos: React.Dispatch<React.SetStateAction<Memo[]>>;
   members: Member[];
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>;
-  initialMode?: 'prep' | 'day';
-  initialView?: 'gantt' | 'retrospective';
+  initialMode: 'prep' | 'day';
+  initialView: 'gantt' | 'retrospective';
   onBackToHome: () => void;
   requestConfirm: (options: ConfirmOptions) => void;
 };
 
-type ViewType = 'gantt' | 'budget' | 'memo' | 'members' | 'retrospective';
+type NavViewType = 'gantt' | 'budget' | 'memo' | 'members' | 'retrospective' | 'settings';
 
 export default function ProjectManagerView({
   project,
   currentUser,
+  projects,
   setProjects,
-  tasks = [],
+  tasks,
   setTasks,
-  groups = [],
+  groups,
   setGroups,
-  expenses = [],
+  expenses,
   setExpenses,
-  memos = [],
+  memos,
   setMemos,
-  members = [],
+  members,
   setMembers,
-  initialMode = 'prep',
-  initialView = 'gantt',
+  initialMode,
+  initialView,
   onBackToHome,
-  requestConfirm,
+  requestConfirm
 }: ProjectManagerViewProps) {
-  const [currentView, setCurrentView] = useState<ViewType>(initialView);
+  const [currentNav, setCurrentNav] = useState<NavViewType>(initialView);
   const [taskMode, setTaskMode] = useState<'prep' | 'day'>(initialMode);
 
-  const isReadOnly = project.status === 'completed';
-
-  const activeTasks = useMemo(() => (tasks || []).filter(t => t.projectId === project.id), [tasks, project.id]);
-  const activeGroups = useMemo(() => (groups || []).filter(g => g.projectId === project.id), [groups, project.id]);
-  const activeExpenses = useMemo(() => (expenses || []).filter(e => e.projectId === project.id), [expenses, project.id]);
-  const activeMemos = useMemo(() => (memos || []).filter(m => m.projectId === project.id), [memos, project.id]);
-  const activeMembers = useMemo(() => (members || []).filter(m => m.projectId === project.id), [members, project.id]);
-
-  const [sidePanelOpen, setSidePanelOpen] = useState<'task' | 'group' | 'addGroup' | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
 
@@ -71,26 +65,124 @@ export default function ProjectManagerView({
   const [newTaskEnd, setNewTaskEnd] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskType, setNewTaskType] = useState<'resident' | 'individual'>('resident');
-  const [newTaskAssignees, setNewTaskAssignees] = useState<string[]>([]);
   const [newTaskStartTime, setNewTaskStartTime] = useState('10:00');
   const [newTaskEndTime, setNewTaskEndTime] = useState('12:00');
+  const [newTaskAssignees, setNewTaskAssignees] = useState<string[]>([]);
 
   const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupDescription, setNewGroupDescription] = useState('');
 
-  const [selectedYearMonth, setSelectedYearMonth] = useState('2026-06');
+  const [selectedYearMonth, setSelectedYearMonth] = useState(() => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  });
+  
   const dateRowRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
-  const formatDate = (date: Date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+  const projectTasks = useMemo(() => tasks.filter(t => t.projectId === project.id), [tasks, project.id]);
+  const projectGroups = useMemo(() => groups.filter(g => g.projectId === project.id), [groups, project.id]);
+  const projectExpenses = useMemo(() => expenses.filter(e => e.projectId === project.id), [expenses, project.id]);
+  const projectMemos = useMemo(() => memos.filter(m => m.projectId === project.id), [memos, project.id]);
+  const projectMembers = useMemo(() => members.filter(m => m.projectId === project.id), [members, project.id]);
+
+  const dates = useMemo(() => {
+    const prepTasks = projectTasks.filter(t => t.taskMode === 'prep');
+    const generateDates = (startStr: string, endStr: string) => {
+      const generated = [];
+      const start = new Date(startStr);
+      const end = new Date(endStr);
+      const days = ['日', '月', '火', '水', '木', '金', '土'];
+      
+      const current = new Date(start);
+      let count = 0;
+      while (current <= end && count < 730) { 
+        const dayOfWeek = current.getDay();
+        let color = '';
+        if (dayOfWeek === 0) color = 'text-red-500 bg-red-50';
+        if (dayOfWeek === 6) color = 'text-blue-500 bg-blue-50';
+        
+        const y = current.getFullYear();
+        const m = String(current.getMonth() + 1).padStart(2, '0');
+        
+        generated.push({
+          date: current.getDate(),
+          dateString: `${y}-${m}-${String(current.getDate()).padStart(2, '0')}`,
+          day: days[dayOfWeek],
+          isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+          color,
+          yearMonth: `${y}-${m}`
+        });
+        
+        current.setDate(current.getDate() + 1);
+        count++;
+      }
+      return generated;
+    };
+
+    if (prepTasks.length === 0) {
+      const today = new Date();
+      const nextWeek = new Date();
+      nextWeek.setDate(today.getDate() + 7);
+      const y = today.getFullYear();
+      const m = String(today.getMonth() + 1).padStart(2, '0');
+      const d = String(today.getDate()).padStart(2, '0');
+      const ny = nextWeek.getFullYear();
+      const nm = String(nextWeek.getMonth() + 1).padStart(2, '0');
+      const nd = String(nextWeek.getDate()).padStart(2, '0');
+      return generateDates(`${y}-${m}-${d}`, `${ny}-${nm}-${nd}`);
+    }
+
+    let minDateStr = prepTasks[0].startDate;
+    let maxDateStr = prepTasks[0].endDate;
+
+    prepTasks.forEach(t => {
+      if (t.startDate < minDateStr) minDateStr = t.startDate;
+      if (t.endDate > maxDateStr) maxDateStr = t.endDate;
+    });
+
+    const minDateObj = new Date(minDateStr);
+    minDateObj.setDate(minDateObj.getDate() - 3);
+    const maxDateObj = new Date(maxDateStr);
+    maxDateObj.setDate(maxDateObj.getDate() + 5);
+
+    const y1 = minDateObj.getFullYear();
+    const m1 = String(minDateObj.getMonth() + 1).padStart(2, '0');
+    const d1 = String(minDateObj.getDate()).padStart(2, '0');
+    const y2 = maxDateObj.getFullYear();
+    const m2 = String(maxDateObj.getMonth() + 1).padStart(2, '0');
+    const d2 = String(maxDateObj.getDate()).padStart(2, '0');
+
+    return generateDates(`${y1}-${m1}-${d1}`, `${y2}-${m2}-${d2}`);
+  }, [projectTasks]);
+
+  const availableYearMonths = useMemo(() => {
+    const ymSet = new Set<string>();
+    dates.forEach(d => ymSet.add(d.yearMonth));
+    return Array.from(ymSet).sort();
+  }, [dates]);
+
+  const currentIndex = availableYearMonths.indexOf(selectedYearMonth);
+
+  const handleYearMonthChange = (ym: string) => {
+    setSelectedYearMonth(ym);
+    const targetDate = dates.find(d => d.yearMonth === ym && d.date === 1) || dates.find(d => d.yearMonth === ym);
+    if (targetDate && dateRowRefs.current[targetDate.dateString]) {
+      dateRowRefs.current[targetDate.dateString]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handlePrevMonth = () => {
+    if (currentIndex > 0) handleYearMonthChange(availableYearMonths[currentIndex - 1]);
+  };
+  const handleNextMonth = () => {
+    if (currentIndex < availableYearMonths.length - 1) handleYearMonthChange(availableYearMonths[currentIndex + 1]);
   };
 
   const dynamicTimeSlots = useMemo(() => {
-    const dayTasks = activeTasks.filter(t => t.taskMode === 'day');
+    const dayTasks = projectTasks.filter(t => t.taskMode === 'day');
     if (dayTasks.length === 0) return ['10:00', '10:30', '11:00', '11:30', '12:00'];
+    
     let minMin = 24 * 60, maxMin = 0;
     dayTasks.forEach(t => {
       if (t.startTime) {
@@ -102,8 +194,10 @@ export default function ProjectManagerView({
         maxMin = Math.max(maxMin, h * 60 + m);
       }
     });
+
     minMin = Math.floor(minMin / 30) * 30 - 30;
     maxMin = Math.ceil(maxMin / 30) * 30 + 30;
+
     const slots = [];
     for(let m = minMin; m <= maxMin; m += 30) {
       const hh = String(Math.floor(m / 60)).padStart(2, '0');
@@ -111,111 +205,48 @@ export default function ProjectManagerView({
       slots.push(`${hh}:${mm}`);
     }
     return slots;
-  }, [activeTasks]);
+  }, [projectTasks]);
 
-  const dates = useMemo(() => {
-    const prepTasks = activeTasks.filter(t => t.taskMode === 'prep');
-    const generateDates = (startStr: string, endStr: string): DateItem[] => {
-      const generated: DateItem[] = [];
-      const start = new Date(startStr);
-      const end = new Date(endStr);
-      const days = ['日', '月', '火', '水', '木', '金', '土'];
-      const current = new Date(start);
-      let count = 0;
-      while (current <= end && count < 730) { 
-        const dayOfWeek = current.getDay();
-        let color = '';
-        if (dayOfWeek === 0) color = 'text-red-500 bg-red-50';
-        if (dayOfWeek === 6) color = 'text-blue-500 bg-blue-50';
-        const y = current.getFullYear();
-        const m = String(current.getMonth() + 1).padStart(2, '0');
-        generated.push({ date: current.getDate(), dateString: formatDate(current), day: days[dayOfWeek], isWeekend: dayOfWeek === 0 || dayOfWeek === 6, color, yearMonth: `${y}-${m}` });
-        current.setDate(current.getDate() + 1);
-        count++;
-      }
-      return generated;
-    };
-    if (prepTasks.length === 0) {
-      const today = new Date();
-      const nextWeek = new Date();
-      nextWeek.setDate(today.getDate() + 7);
-      return generateDates(formatDate(today), formatDate(nextWeek));
-    }
-    let minDateStr = prepTasks[0].startDate;
-    let maxDateStr = prepTasks[0].endDate;
-    prepTasks.forEach(t => {
-      if (t.startDate < minDateStr) minDateStr = t.startDate;
-      if (t.endDate > maxDateStr) maxDateStr = t.endDate;
-    });
-    const minDateObj = new Date(minDateStr);
-    minDateObj.setDate(minDateObj.getDate() - 3);
-    const maxDateObj = new Date(maxDateStr);
-    maxDateObj.setDate(maxDateObj.getDate() + 5);
-    return generateDates(formatDate(minDateObj), formatDate(maxDateObj));
-  }, [activeTasks]);
-
-  const availableYearMonths = useMemo(() => {
-    const ymSet = new Set<string>();
-    dates.forEach(d => ymSet.add(d.yearMonth));
-    return Array.from(ymSet).sort();
-  }, [dates]);
-
-  const handleYearMonthChange = (ym: string) => {
-    setSelectedYearMonth(ym);
-    const targetDate = dates.find(d => d.yearMonth === ym && d.date === 1) || dates.find(d => d.yearMonth === ym);
-    if (targetDate && dateRowRefs.current[targetDate.dateString]) {
-      dateRowRefs.current[targetDate.dateString]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
-
-  const handleOpenNewTaskPanel = () => {
-    if (isReadOnly) return;
-    setSelectedTask(null);
+  const handleOpenTaskModal = () => {
+    if (project.status === 'completed') return;
     setNewTaskName('');
     setNewTaskGroup('');
+    
     const today = new Date();
     const tomorrow = new Date();
     tomorrow.setDate(today.getDate() + 1);
-    setNewTaskStart(formatDate(today));
-    setNewTaskEnd(formatDate(tomorrow));
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    const ny = tomorrow.getFullYear();
+    const nm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const nd = String(tomorrow.getDate()).padStart(2, '0');
+
+    setNewTaskStart(`${y}-${m}-${d}`);
+    setNewTaskEnd(`${ny}-${nm}-${nd}`);
     setNewTaskDescription('');
     setNewTaskStartTime('10:00');
     setNewTaskEndTime('12:00');
     setNewTaskType('resident');
-    setNewTaskAssignees([]);
-    setSidePanelOpen('task');
-  };
-
-  const handleOpenAddGroupPanel = () => {
-    if (isReadOnly) return;
-    setNewGroupName('');
-    setNewGroupDescription('');
-    setSidePanelOpen('addGroup');
-  };
-
-  const handleSelectTask = (task: Task) => {
-    setSelectedTask(task);
-    setSidePanelOpen('task');
-  };
-
-  const handleSelectGroup = (group: Group) => {
-    setSelectedGroup(group);
-    setSidePanelOpen('group');
+    setNewTaskAssignees(projectMembers.map(mem => mem.name).slice(0, 2));
+    setIsTaskModalOpen(true);
   };
 
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isReadOnly || !newTaskName.trim()) return;
+    if (project.status === 'completed' || !newTaskName.trim()) return; 
+    
     const actualStart = newTaskStart <= newTaskEnd ? newTaskStart : newTaskEnd;
     const actualEnd = newTaskStart <= newTaskEnd ? newTaskEnd : newTaskStart;
+
     const newTask: Task = {
       taskId: `task_${Date.now()}`,
       projectId: project.id,
       taskMode: taskMode,
-      taskName: newTaskName,
+      taskName: newTaskName.trim(),
       taskStatus: 'active',
       needHelp: false,
-      group: newTaskGroup,
+      group: taskMode === 'prep' ? newTaskGroup : '',
       startDate: actualStart,
       endDate: actualEnd,
       description: newTaskDescription,
@@ -223,64 +254,68 @@ export default function ProjectManagerView({
       startTime: taskMode === 'day' ? newTaskStartTime : undefined,
       endTime: taskMode === 'day' ? newTaskEndTime : undefined,
       currentId: taskMode === 'day' && newTaskType === 'resident' && newTaskAssignees.length > 0 ? newTaskAssignees[0] : undefined,
-      color: taskMode === 'day' ? (newTaskType === 'resident' ? 'bg-pink-500' : 'bg-blue-500') : 'bg-blue-500', 
+      color: taskMode === 'day' ? (newTaskType === 'resident' ? 'bg-pink-500' : 'bg-blue-500') : 'bg-blue-500',
       assignees: newTaskAssignees,
       remind: '締め切り日の2日前',
     };
-    setTasks(prev => [...(prev || []), newTask]);
-    setSidePanelOpen(null);
+
+    setTasks([...tasks, newTask]);
+    setIsTaskModalOpen(false);
   };
 
-  const submitAddGroup = (e: React.FormEvent) => {
+  const handleCreateGroup = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isReadOnly || !newGroupName.trim()) return;
-    const newGroupId = `g_${Date.now()}`;
-    setGroups(prev => [...(prev || []), { id: newGroupId, projectId: project.id, name: newGroupName.trim(), description: newGroupDescription }]);
-    setSidePanelOpen(null);
+    if (project.status === 'completed' || !newGroupName.trim()) return;
+
+    const newGroup: Group = {
+      id: `g_${Date.now()}`,
+      projectId: project.id,
+      name: newGroupName.trim(),
+    };
+
+    setGroups([...groups, newGroup]);
+    setNewGroupName('');
+    setIsGroupModalOpen(false);
   };
 
   const handleDeleteTask = () => {
-    if (isReadOnly || !selectedTask) return;
+    if (!selectedTask || project.status === 'completed') return;
     requestConfirm({
       title: 'タスクの削除',
       message: `「${selectedTask.taskName}」を削除しますか？`,
       confirmText: '削除する',
       isDanger: true,
       onConfirm: () => {
-        setTasks(prev => (prev || []).filter(t => t.taskId !== selectedTask.taskId));
-        setSidePanelOpen(null);
+        setTasks(tasks.filter(t => t.taskId !== selectedTask.taskId));
         setSelectedTask(null);
       }
     });
   };
 
-  const handleDeleteGroup = (groupId: string) => {
-    if (isReadOnly) return;
-    const groupToDelete = activeGroups.find(g => g.id === groupId);
-    if (!groupToDelete) return;
+  const handleDeleteGroup = (group: Group) => {
+    if (project.status === 'completed') return;
     requestConfirm({
       title: 'グループの削除',
-      message: `グループ「${groupToDelete.name}」を削除しますか？\n含まれるタスクも一緒に削除されます。`,
+      message: `グループ「${group.name}」を削除しますか？\n含まれるタスクも一緒に削除されます。`,
       confirmText: '削除する',
       isDanger: true,
       onConfirm: () => {
-        setGroups(prev => (prev || []).filter(g => g.id !== groupId));
-        setTasks(prev => (prev || []).filter(t => t.group !== groupId));
-        setSidePanelOpen(null);
+        setGroups(groups.filter(g => g.id !== group.id));
+        setTasks(tasks.filter(t => t.group !== group.id));
         setSelectedGroup(null);
       }
     });
   };
 
   const updateSelectedTask = (updates: Partial<Task>) => {
-    if (isReadOnly || !selectedTask) return;
+    if (!selectedTask || project.status === 'completed') return;
     const updated = { ...selectedTask, ...updates };
-    setTasks(prev => (prev || []).map(t => t.taskId === selectedTask.taskId ? updated : t));
+    setTasks(tasks.map(t => t.taskId === selectedTask.taskId ? updated : t));
     setSelectedTask(updated);
   };
 
   const handleHandover = (task: Task) => {
-    if (isReadOnly) return;
+    if (project.status === 'completed') return;
     if (!task.assignees || task.assignees.length <= 1) {
       alert('メンバーが複数人登録されている場合に引き継ぎを行えます。');
       return;
@@ -288,417 +323,582 @@ export default function ProjectManagerView({
     const currentIndex = task.assignees.indexOf(task.currentId || task.assignees[0]);
     const nextIndex = (currentIndex + 1) % task.assignees.length;
     const nextAssignee = task.assignees[nextIndex];
-    setTasks(prev => (prev || []).map(t => t.taskId === task.taskId ? { ...t, currentId: nextAssignee } : t));
+
+    setTasks(tasks.map(t => t.taskId === task.taskId ? { ...t, currentId: nextAssignee } : t));
     if (selectedTask && selectedTask.taskId === task.taskId) {
       setSelectedTask({ ...selectedTask, currentId: nextAssignee });
     }
   };
 
   return (
-    <div className="flex flex-col h-full w-full relative overflow-hidden bg-white">
-      <header className="h-16 border-b border-gray-100 px-6 flex items-center justify-between shrink-0 bg-white z-20">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => {
-              if (sidePanelOpen) {
-                setSidePanelOpen(null);
-              } else {
-                onBackToHome();
-              }
-            }} 
-            className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
-          </button> 
-          <span className="text-xl font-extrabold text-gray-800">{project.name}</span>
-          {project.status === 'completed' && <span className="text-xs bg-green-100 text-green-700 font-bold px-2.5 py-0.5 rounded-full">✅ 振り返りモード (閲覧専用)</span>}
-        </div>
-
-        {currentView === 'gantt' && taskMode === 'prep' && (
-          <div className="flex items-center gap-2">
-            <label htmlFor="yearMonthSelect" className="text-xs font-bold text-gray-500 hidden sm:inline">表示月:</label>
-            <select id="yearMonthSelect" value={selectedYearMonth} onChange={(e) => handleYearMonthChange(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 bg-white text-sm font-bold text-gray-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
-              {availableYearMonths.map(ym => {
-                const [y, m] = ym.split('-');
-                return <option key={ym} value={ym}>{y}年 {parseInt(m, 10)}月</option>;
-              })}
-            </select>
+    <div className="flex-1 flex flex-col md:flex-row h-full bg-white relative overflow-hidden">
+      
+      {/* --- PC用 サイドバー --- */}
+      <aside className="hidden md:flex flex-col w-64 bg-gray-50 border-r border-gray-200 shrink-0 z-20">
+        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 shrink-0">
+          <div className="flex items-center overflow-hidden">
+            <button onClick={onBackToHome} className="mr-2 p-1.5 rounded-full hover:bg-gray-200 text-gray-500 transition-colors shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <span className="font-bold text-lg text-gray-800 truncate" title={project.name}>{project.name}</span>
           </div>
-        )}
-      </header>
-
-      <div className="flex-1 flex flex-row relative overflow-hidden min-w-0 w-full">
+          <button 
+            onClick={() => setCurrentNav('settings')}
+            className={`p-2 rounded-xl transition-colors shrink-0 ${currentNav === 'settings' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200'}`}
+            title="プロジェクト設定"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
         
-        <nav className="hidden md:flex flex-col w-64 bg-gray-50 border-r border-gray-200 p-4 shrink-0 gap-2">
-          <div className="text-xs font-bold text-gray-400 px-3 mb-1 uppercase tracking-wider">メニュー</div>
-          {NAV_ITEMS.map(item => {
-            const isActive = item.id === currentView;
+        <nav className="flex-1 py-6 flex flex-col gap-2 px-4 overflow-y-auto">
+          {[
+            { id: 'gantt', label: 'チャート', iconPath: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
+            { id: 'members', label: 'メンバー', iconPath: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" },
+            { id: 'budget', label: '予算管理', iconPath: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+            { id: 'memo', label: '共有メモ', iconPath: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+            ...(project.status === 'completed' ? [{ id: 'retrospective', label: '振り返り', iconPath: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" }] : [])
+          ].map(item => {
+            const isActive = currentNav === item.id;
             return (
-              <button
-                key={`left-nav-${item.id}`}
-                onClick={() => setCurrentView(item.id as ViewType)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-200/60'}`}
+              <button 
+                key={`pc-nav-${item.id}`}
+                onClick={() => setCurrentNav(item.id as NavViewType)} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${
+                  isActive ? 'bg-blue-100 text-blue-700 font-bold shadow-sm' : 'text-gray-600 hover:bg-gray-200'
+                }`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.iconPath} /></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.iconPath} />
+                </svg>
                 {item.label}
               </button>
             );
           })}
         </nav>
+      </aside>
 
-        <div className={`relative flex-1 flex flex-col min-w-0 h-full overflow-hidden transition-all duration-300 ${sidePanelOpen ? 'lg:mr-96' : ''}`}>
-          {currentView === 'budget' ? (
+      {/* --- メインビュー内容（右側） --- */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        
+        {/* SP用ヘッダー */}
+        <header className="md:hidden h-16 border-b border-gray-200 px-4 flex items-center justify-between shrink-0 bg-white z-20">
+          <div className="flex items-center text-lg font-bold overflow-hidden">
+            <button onClick={onBackToHome} className="mr-2 p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <span className="truncate max-w-40">{project.name}</span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {project.status === 'completed' && (
+              <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-full">完了済</span>
+            )}
+            <button 
+              onClick={() => setCurrentNav('settings')}
+              className={`p-2 rounded-xl transition-colors ${currentNav === 'settings' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-700'}`}
+              title="プロジェクト設定"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-hidden flex flex-col relative">
+          {currentNav === 'retrospective' ? (
+            <RetrospectiveView 
+              project={project} 
+              tasks={projectTasks} 
+              expenses={projectExpenses}
+              members={projectMembers}
+              onBack={() => setCurrentNav('gantt')}
+            />
+          ) : currentNav === 'budget' ? (
             <BudgetView 
-              activeProjectId={project.id} 
-              totalBudget={project.budget} 
-              setTotalBudget={(amount) => {
-                setProjects(prev => (prev || []).map(p => p.id === project.id ? { ...p, budget: amount } : p));
+              totalBudget={project.budget}
+              setTotalBudget={(amount: number) => setProjects(projects.map(p => p.id === project.id ? { ...p, budget: amount } : p))}
+              expenses={projectExpenses}
+              setExpenses={(newExps: Expense[]) => {
+                const otherExps = expenses.filter(e => e.projectId !== project.id);
+                const updatedExps = newExps.map(e => ({ ...e, projectId: project.id }));
+                setExpenses([...otherExps, ...updatedExps]);
               }} 
-              expenses={activeExpenses} 
-              setExpenses={(newExp) => setExpenses(prev => [...(prev || []).filter(e => e.projectId !== project.id), ...newExp])} 
-              isReadOnly={isReadOnly}
-              requestConfirm={requestConfirm} 
+              activeProjectId={project.id}
+              requestConfirm={requestConfirm}
             />
-          ) : currentView === 'memo' ? (
+          ) : currentNav === 'memo' ? (
             <MemoView 
-              activeProjectId={project.id} 
+              memos={projectMemos} 
+              setMemos={(newMemos: Memo[]) => {
+                const otherMemos = memos.filter(m => m.projectId !== project.id);
+                const updatedMemos = newMemos.map(m => ({ ...m, projectId: project.id }));
+                setMemos([...otherMemos, ...updatedMemos]);
+              }} 
+              activeProjectId={project.id}
               currentUser={currentUser} 
-              memos={activeMemos} 
-              setMemos={(newMem) => setMemos(prev => [...(prev || []).filter(m => m.projectId !== project.id), ...newMem])} 
-              requestConfirm={requestConfirm} 
+              requestConfirm={requestConfirm}
             />
-          ) : currentView === 'members' ? (
+          ) : currentNav === 'members' ? (
             <MemberView 
-              activeProjectId={project.id} 
-              groups={activeGroups} 
-              members={activeMembers} 
-              setMembers={(newMem) => setMembers(prev => [...(prev || []).filter(m => m.projectId !== project.id), ...newMem])} 
-              tasks={activeTasks} 
-              isReadOnly={isReadOnly}
-              requestConfirm={requestConfirm} 
+              members={projectMembers} 
+              setMembers={(newMembers: Member[]) => {
+                const otherMembers = members.filter(m => m.projectId !== project.id);
+                const updatedMembers = newMembers.map(m => ({ ...m, projectId: project.id }));
+                setMembers([...otherMembers, ...updatedMembers]);
+              }} 
+              tasks={projectTasks} 
+              activeProjectId={project.id}
+              groups={projectGroups}
+              requestConfirm={requestConfirm}
             />
-          ) : currentView === 'retrospective' ? (
-            <RetrospectiveView project={project} tasks={activeTasks} expenses={activeExpenses} members={activeMembers} onBack={() => setCurrentView('gantt')} />
-          ) : currentView === 'gantt' ? (
-            <>
-              <div className="bg-white border-b border-gray-100 flex justify-between items-center px-4 py-3 gap-3 shrink-0 z-10">
-                <div className="flex bg-gray-100 rounded-lg p-1 w-full sm:w-auto text-sm shadow-inner">
-                  <button onClick={() => setTaskMode('prep')} className={`flex-1 sm:w-32 py-2 flex items-center justify-center gap-2 font-bold transition-all ${taskMode === 'prep' ? 'text-gray-800 bg-white rounded-md shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><span className="text-blue-500">📄</span> 準備</button>
-                  <button onClick={() => setTaskMode('day')} className={`flex-1 sm:w-32 py-2 flex items-center justify-center gap-2 font-bold transition-all ${taskMode === 'day' ? 'text-gray-800 bg-white rounded-md shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><span>🕒</span> 当日</button>
+          ) : currentNav === 'settings' ? (
+            <ProjectSettingsView 
+              project={project} 
+              projects={projects} 
+              setProjects={setProjects} 
+              onBackToHome={onBackToHome}
+              requestConfirm={requestConfirm}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              
+              {/* モード切替タブ */}
+              <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-center items-center shrink-0 z-30">
+                <div className="flex bg-gray-100 rounded-xl p-1 w-full max-w-sm text-sm shadow-inner">
+                  <button 
+                    onClick={() => setTaskMode('prep')}
+                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg ${
+                      taskMode === 'prep' ? 'text-blue-600 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <span>📄</span> 準備モード
+                  </button>
+                  <button 
+                    onClick={() => setTaskMode('day')}
+                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg ${
+                      taskMode === 'day' ? 'text-blue-600 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <span>🕒</span> 当日モード
+                  </button>
                 </div>
               </div>
 
-              {taskMode === 'prep' ? (
-                <PrepGanttView tasks={activeTasks} groups={activeGroups} dates={dates} onSelectTask={handleSelectTask} onSelectGroup={handleSelectGroup} onAddGroup={handleOpenAddGroupPanel} dateRowRefs={dateRowRefs} />
-              ) : (
-                <DayTimelineView tasks={activeTasks} timeSlots={dynamicTimeSlots} onSelectTask={handleSelectTask} onHandover={handleHandover} />
-              )}
-
-              {!isReadOnly && (
-                <div className="absolute bottom-20 md:bottom-8 right-4 md:right-8 z-40">
-                  <button onClick={handleOpenNewTaskPanel} className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-bold p-4 md:py-3 md:px-6 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl hover:-translate-y-1">
-                    <span className="hidden md:inline">{taskMode === 'prep' ? '準備タスクを追加' : '当日タスクを追加'}</span>
-                    <span className="text-2xl font-light leading-none">＋</span>
+              {/* 月選択バー */}
+              {taskMode === 'prep' && (
+                <div className="bg-white border-b border-gray-200 px-4 py-2 flex justify-center items-center gap-10 shrink-0 z-30">
+                  <button 
+                    onClick={handlePrevMonth} 
+                    disabled={currentIndex <= 0}
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
+                  </button>
+                  <div className="text-lg font-extrabold text-gray-800">
+                    {selectedYearMonth ? `${selectedYearMonth.split('-')[0]}年 ${parseInt(selectedYearMonth.split('-')[1], 10)}月` : ''}
+                  </div>
+                  <button 
+                    onClick={handleNextMonth} 
+                    disabled={currentIndex >= availableYearMonths.length - 1}
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                   </button>
                 </div>
               )}
-            </>
-          ) : null}
-        </div>
 
-        {/* --- 専用サイドパネル UI --- */}
-        {sidePanelOpen && (
-          <div className="absolute inset-0 bg-black/20 z-40 lg:hidden" onClick={() => setSidePanelOpen(null)} />
-        )}
-
-        {sidePanelOpen && (
-          <div className={`absolute top-0 right-0 h-full w-full lg:w-96 bg-white shadow-2xl border-l border-gray-200 transform transition-transform duration-300 z-50 flex flex-col ${sidePanelOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50 shrink-0">
-              <h3 className="font-extrabold text-lg text-gray-800">
-                {sidePanelOpen === 'group' ? 'グループ詳細' : 
-                 sidePanelOpen === 'addGroup' ? '新規グループ追加' : 
-                 selectedTask ? 'タスク編集・詳細' : (taskMode === 'prep' ? '準備タスク追加' : '当日タスク追加')}
-              </h3>
-              <div className="flex items-center gap-3">
-                {selectedTask && selectedTask.taskStatus === 'completed' && (
-                  <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-bold border border-green-200">完了済</span>
+              <div className="flex-1 overflow-hidden relative">
+                {taskMode === 'prep' ? (
+                  <PrepGanttView 
+                    tasks={projectTasks}
+                    groups={projectGroups}
+                    dates={dates}
+                    onSelectTask={setSelectedTask}
+                    onSelectGroup={setSelectedGroup}
+                    onAddGroup={() => setIsGroupModalOpen(true)}
+                    dateRowRefs={dateRowRefs}
+                  />
+                ) : (
+                  <DayTimelineView 
+                    tasks={projectTasks}
+                    timeSlots={dynamicTimeSlots}
+                    onSelectTask={setSelectedTask}
+                    onHandover={handleHandover}
+                  />
                 )}
-                <button onClick={() => setSidePanelOpen(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+
+                {project.status === 'active' && (
+                  <div className="absolute bottom-6 right-6 z-40">
+                    <button 
+                      onClick={handleOpenTaskModal}
+                      className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-bold p-4 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl hover:-translate-y-1"
+                    >
+                      <span className="text-2xl font-light leading-none">＋</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 pb-24 flex flex-col gap-6">
-              
-              {/* --- 新規グループ追加フォーム --- */}
-              {sidePanelOpen === 'addGroup' && !isReadOnly && (
-                <form onSubmit={submitAddGroup} className="flex flex-col gap-5 h-full">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">グループ名</label>
-                    <input type="text" required value={newGroupName} onChange={e => setNewGroupName(e.target.value)} className="w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 企画" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">説明 (任意)</label>
-                    <textarea value={newGroupDescription} onChange={e => setNewGroupDescription(e.target.value)} className="w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" rows={4} placeholder="このグループの役割やメモを入力..." />
-                  </div>
-                  <div className="mt-auto pt-4">
-                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-sm hover:bg-blue-700 transition-colors">作成する</button>
-                  </div>
-                </form>
-              )}
+          )}
+        </div>
 
-              {/* --- グループ詳細パネル --- */}
-              {sidePanelOpen === 'group' && selectedGroup && (
-                <>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-500 mb-1">グループ名</label>
-                    <div className="font-bold text-lg text-gray-800">{selectedGroup.name}</div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-500 mb-1">説明</label>
-                    <textarea 
-                      value={selectedGroup.description || '（説明はありません）'}
-                      disabled={isReadOnly}
-                      onChange={(e) => {
-                        if (isReadOnly) return;
-                        const newDesc = e.target.value;
-                        setSelectedGroup({ ...selectedGroup, description: newDesc });
-                        setGroups((groups || []).map(g => g.id === selectedGroup.id ? { ...g, description: newDesc } : g));
-                      }}
-                      className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
-                      rows={4}
-                    />
-                  </div>
-                  {(() => {
-                    const groupTasks = activeTasks.filter(t => t.taskMode === 'prep' && (t.group || '') === selectedGroup.id);
-                    const completedTasks = groupTasks.filter(t => t.taskStatus === 'completed');
-                    const gProgress = groupTasks.length === 0 ? 0 : Math.round((completedTasks.length / groupTasks.length) * 100);
-                    return (
-                      <div>
-                        <span className="text-sm font-bold text-gray-500">準備進捗: </span>
-                        <span className="bg-blue-100 text-blue-800 font-bold px-3 py-1 rounded-full text-sm">{gProgress}%</span>
-                      </div>
-                    );
-                  })()}
-                  {!isReadOnly && (
-                    <div className="mt-auto pt-4 flex gap-3">
-                      <button onClick={() => handleDeleteGroup(selectedGroup.id)} className="w-full py-3 bg-red-50 text-red-600 border border-red-200 rounded-lg font-bold hover:bg-red-100 transition-colors">
-                        このグループを削除する
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* --- 新規タスク追加フォーム --- */}
-              {sidePanelOpen === 'task' && !selectedTask && !isReadOnly && (
-                <form id="add-task-form" onSubmit={handleAddTask} className="flex flex-col gap-5 h-full">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">タスク名</label>
-                    <input type="text" required value={newTaskName} onChange={e => setNewTaskName(e.target.value)} className="w-full border border-gray-300 rounded-md p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 受付対応" />
-                  </div>
-                  {taskMode === 'day' && (
-                    <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1">当日タスクの種類</label>
-                      <select value={newTaskType} onChange={e => setNewTaskType(e.target.value as 'resident'|'individual')} className="w-full border border-gray-300 rounded-md p-2.5 outline-none bg-white font-bold">
-                        <option value="resident">📌 常駐タスク (ローテーション・引き継ぎあり)</option>
-                        <option value="individual">⚡ 個別タスク (単発・ピンポイント)</option>
-                      </select>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">関連グループ (任意)</label>
-                    <select value={newTaskGroup} onChange={e => setNewTaskGroup(e.target.value)} className="w-full border border-gray-300 rounded-md p-2.5 outline-none bg-white">
-                      <option value="">(未設定)</option>
-                      {activeGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </select>
-                  </div>
-                  {taskMode === 'prep' ? (
-                    <div className="flex flex-col gap-2">
-                      <label className="block text-sm font-bold text-gray-700">期間</label>
-                      <div className="flex items-center gap-2">
-                        <input type="date" required value={newTaskStart} onChange={e => setNewTaskStart(e.target.value)} className="w-full text-sm border border-gray-300 p-2 rounded-md outline-none focus:ring-2 focus:ring-blue-500" />
-                        <span className="text-gray-400 font-bold">〜</span>
-                        <input type="date" required value={newTaskEnd} onChange={e => setNewTaskEnd(e.target.value)} className="w-full text-sm border border-gray-300 p-2 rounded-md outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <label className="block text-sm font-bold text-gray-700">時間設定</label>
-                      <div className="flex items-center gap-2">
-                        <input type="time" required value={newTaskStartTime} onChange={e => setNewTaskStartTime(e.target.value)} className="w-full text-sm border border-gray-300 p-2 rounded-md outline-none focus:ring-2 focus:ring-blue-500" />
-                        <span className="text-gray-400 font-bold">〜</span>
-                        <input type="time" required value={newTaskEndTime} onChange={e => setNewTaskEndTime(e.target.value)} className="w-full text-sm border border-gray-300 p-2 rounded-md outline-none focus:ring-2 focus:ring-blue-500" />
-                      </div>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">割り当てメンバー</label>
-                    <div className="flex flex-wrap gap-2 items-center bg-gray-50 p-3 rounded-lg border border-gray-200 min-h-12">
-                      {newTaskAssignees.map(name => {
-                        const member = activeMembers.find(m => m.name === name);
-                        const colorClass = member ? member.color : 'bg-blue-600';
-                        return (
-                          <span key={name} className={`${colorClass} text-white px-3 py-1 rounded-full flex items-center gap-1.5 text-xs font-bold shadow-sm`}>
-                            {name}
-                            <button 
-                              type="button" 
-                              onClick={() => setNewTaskAssignees(newTaskAssignees.filter(n => n !== name))} 
-                              className="text-white hover:text-red-200 font-bold"
-                            >
-                              &times;
-                            </button>
-                          </span>
-                        );
-                      })}
-                      {activeMembers.filter(m => !newTaskAssignees.includes(m.name)).length > 0 ? (
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              setNewTaskAssignees([...newTaskAssignees, e.target.value]);
-                            }
-                          }}
-                          className="border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-xs font-bold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                        >
-                          <option value="" disabled>+ 追加</option>
-                          {activeMembers.filter(m => !newTaskAssignees.includes(m.name)).map(m => (
-                            <option key={m.id} value={m.name}>{m.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        newTaskAssignees.length === 0 && <span className="text-xs text-gray-400">メンバーがいません（「メンバー」タブから追加してください）</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-auto pt-4">
-                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-sm hover:bg-blue-700 transition-colors">作成する</button>
-                  </div>
-                </form>
-              )}
-
-              {/* --- 既存タスク編集（または閲覧）パネル --- */}
-              {sidePanelOpen === 'task' && selectedTask && (
-                <>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-500 mb-1">タスク名</label>
-                    <input type="text" disabled={isReadOnly} value={selectedTask.taskName} onChange={(e) => updateSelectedTask({ taskName: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2.5 font-bold text-gray-800 bg-gray-50 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-500 mb-1">説明</label>
-                    <textarea value={selectedTask.description || '（説明はありません）'} disabled={isReadOnly} onChange={(e) => updateSelectedTask({ description: e.target.value })} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:outline-none" rows={3} />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 gap-4">
-                    <div>
-                      <label className="block text-sm font-bold text-gray-500 mb-1">関連グループ</label>
-                      <select value={selectedTask.group || ''} disabled={isReadOnly} onChange={(e) => updateSelectedTask({ group: e.target.value })} className="w-full border border-gray-300 rounded-md p-2 bg-gray-50 text-sm font-bold text-gray-800 outline-none">
-                        <option value="">(未設定)</option>
-                        {activeGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-gray-500 mb-1">{selectedTask.taskMode === 'prep' ? '期間・日付' : '時間設定 (分単位)'}</label>
-                      {selectedTask.taskMode === 'prep' ? (
-                        <div className="flex items-center gap-2">
-                          <input type="date" disabled={isReadOnly} value={selectedTask.startDate} onChange={(e) => updateSelectedTask({ startDate: e.target.value })} className="w-full border border-gray-300 rounded p-2 text-sm font-bold bg-gray-50 outline-none" />
-                          <span className="text-gray-400 font-bold">〜</span>
-                          <input type="date" disabled={isReadOnly} value={selectedTask.endDate} onChange={(e) => updateSelectedTask({ endDate: e.target.value })} className="w-full border border-gray-300 rounded p-2 text-sm font-bold bg-gray-50 outline-none" />
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <input type="time" disabled={isReadOnly} value={selectedTask.startTime || '10:00'} onChange={(e) => updateSelectedTask({ startTime: e.target.value })} className="w-full border-2 border-blue-400 rounded-lg p-2 text-center text-sm font-extrabold text-blue-600 bg-gray-50 outline-none" />
-                          <span className="text-gray-400 font-bold">〜</span>
-                          <input type="time" disabled={isReadOnly} value={selectedTask.endTime || '12:00'} onChange={(e) => updateSelectedTask({ endTime: e.target.value })} className="w-full border-2 border-blue-400 rounded-lg p-2 text-center text-sm font-extrabold text-blue-600 bg-gray-50 outline-none" />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-gray-500 mb-2">割り当てメンバー</label>
-                    <div className="flex flex-wrap gap-2 items-center bg-gray-50 p-3 rounded-lg border border-gray-200 min-h-12">
-                      {selectedTask.assignees?.map((name) => {
-                        const member = activeMembers.find(m => m.name === name);
-                        const colorClass = member ? member.color : 'bg-blue-600';
-                        return (
-                          <span key={name} className={`${colorClass} text-white px-3 py-1 rounded-full flex items-center gap-1.5 text-xs font-bold shadow-sm`}>
-                            {name}
-                            {!isReadOnly && (
-                              <button 
-                                type="button"
-                                onClick={() => updateSelectedTask({ assignees: selectedTask.assignees?.filter(a => a !== name) })} 
-                                className="text-white hover:text-red-200 font-bold"
-                              >
-                                &times;
-                              </button>
-                            )}
-                          </span>
-                        );
-                      })}
-                      {!isReadOnly && activeMembers.filter(m => !selectedTask.assignees?.includes(m.name)).length > 0 ? (
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              const current = selectedTask.assignees || [];
-                              updateSelectedTask({ assignees: [...current, e.target.value] });
-                            }
-                          }}
-                          className="border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-xs font-bold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                        >
-                          <option value="" disabled>+ 追加</option>
-                          {activeMembers.filter(m => !selectedTask.assignees?.includes(m.name)).map(m => (
-                            <option key={m.id} value={m.name}>{m.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        selectedTask.assignees?.length === 0 && <span className="text-xs text-gray-400">割り当てなし</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {!isReadOnly && (
-                    <>
-                      <div className="mt-4 flex flex-col gap-3 pt-4 border-t border-gray-100">
-                        <p className="text-sm font-bold text-gray-500">クイックアクション</p>
-                        <button onClick={() => updateSelectedTask({ taskStatus: selectedTask.taskStatus === 'active' ? 'completed' : 'active' })} className={`w-full py-3 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 ${selectedTask.taskStatus === 'completed' ? 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' : 'bg-green-500 text-white hover:bg-green-600 shadow-sm'}`}>
-                          {selectedTask.taskStatus === 'completed' ? '「未完了」に戻す' : '✓ タスクを完了にする'}
-                        </button>
-                        <button onClick={() => updateSelectedTask({ needHelp: !selectedTask.needHelp })} className={`w-full py-3 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 border ${selectedTask.needHelp ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' : 'bg-white border-red-300 text-red-500 hover:bg-red-50'}`}>
-                          {selectedTask.needHelp ? 'ヘルプ要請を取り下げる' : '🆘 ヘルプ(SOS)を要請する'}
-                        </button>
-                      </div>
-
-                      <div className="mt-6 pt-4 flex gap-3">
-                        <button onClick={handleDeleteTask} className="w-full py-3 bg-white border border-red-200 text-red-500 font-bold rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center gap-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          削除する
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        )}
+        {/* --- SP用 ボトムナビゲーションバー --- */}
+        <nav className="md:hidden h-16 bg-white border-t border-gray-200 flex justify-around items-center text-[10px] text-gray-500 shrink-0 z-40">
+          {[
+            { id: 'gantt', label: 'チャート', iconPath: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
+            { id: 'members', label: 'メンバー', iconPath: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" },
+            { id: 'budget', label: '予算管理', iconPath: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+            { id: 'memo', label: '共有メモ', iconPath: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+            ...(project.status === 'completed' ? [{ id: 'retrospective', label: '振り返り', iconPath: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" }] : [])
+          ].map(item => {
+            const isActive = currentNav === item.id;
+            return (
+              <button 
+                key={`sp-nav-${item.id}`}
+                onClick={() => setCurrentNav(item.id as NavViewType)} 
+                className={`flex flex-col items-center transition-colors flex-1 py-2 ${
+                  isActive ? 'text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.iconPath} />
+                </svg>
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
-      <nav className="md:hidden shrink-0 w-full h-16 bg-white border-t border-gray-200 flex justify-around items-center text-[10px] text-gray-500 z-50 pb-safe">
-        {NAV_ITEMS.map(item => {
-          const isActive = item.id === currentView;
-          return (
-            <button 
-              key={`mobile-nav-${item.id}`}
-              onClick={() => setCurrentView(item.id as ViewType)} 
-              className={`flex flex-col items-center transition-colors ${isActive ? 'text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.iconPath} /></svg>
-              <span className={isActive ? "font-bold" : ""}>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {/* --- 各種モーダル --- */}
+      {selectedGroup && project.status === 'active' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedGroup(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden p-6 flex flex-col gap-4 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-extrabold text-lg text-gray-800">グループ: {selectedGroup.name}</h3>
+              <button onClick={() => setSelectedGroup(null)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+
+            {(() => {
+              const groupTasks = projectTasks.filter(t => t.group === selectedGroup.id);
+              const completedGroupTasks = groupTasks.filter(t => t.taskStatus === 'completed');
+              const activeGroupTasks = groupTasks.filter(t => t.taskStatus !== 'completed');
+              const gProgress = groupTasks.length === 0 ? 0 : Math.round((completedGroupTasks.length / groupTasks.length) * 100);
+
+              return (
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <span className="text-sm font-bold text-gray-500">進捗度: </span>
+                    <span className="bg-blue-100 text-blue-800 font-bold px-3 py-1 rounded-full text-sm">{gProgress}%</span>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-bold text-gray-700 mb-1">残っているタスク ({activeGroupTasks.length}件)</p>
+                    <div className="bg-gray-50 p-2 rounded-xl border max-h-28 overflow-y-auto text-sm">
+                      {activeGroupTasks.length === 0 ? <p className="text-gray-400 text-xs">なし</p> : activeGroupTasks.map(t => <div key={t.taskId} className="py-1">• {t.taskName}</div>)}
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t flex gap-3">
+                    <button onClick={() => setSelectedGroup(null)} className="flex-1 py-2.5 border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50">閉じる</button>
+                    <button onClick={() => handleDeleteGroup(selectedGroup)} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 shadow-sm">グループを削除</button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {isGroupModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsGroupModalOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden p-6 flex flex-col gap-4 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-extrabold text-lg text-gray-800">新規グループ追加</h3>
+              <button onClick={() => setIsGroupModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+            
+            <form onSubmit={handleCreateGroup} className="flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">グループ名</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={newGroupName} 
+                  onChange={e => setNewGroupName(e.target.value)} 
+                  className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold" 
+                  placeholder="例: 企画" 
+                />
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button type="button" onClick={() => setIsGroupModalOpen(false)} className="flex-1 py-2.5 border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50">キャンセル</button>
+                <button type="submit" className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-sm">作成する</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isTaskModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsTaskModalOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-gray-100 shrink-0">
+              <h2 className="font-bold text-gray-800 text-lg">{taskMode === 'prep' ? '準備タスク追加' : '当日タスク追加'}</h2>
+              <button type="button" onClick={() => setIsTaskModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+            
+            <form onSubmit={handleAddTask} className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">タスク項目</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={newTaskName} 
+                  onChange={e => setNewTaskName(e.target.value)} 
+                  className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-bold" 
+                  placeholder="例: 受付対応" 
+                />
+              </div>
+
+              {taskMode === 'day' && (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">タスクの種類 (当日)</label>
+                  <select 
+                    value={newTaskType} 
+                    onChange={e => setNewTaskType(e.target.value as 'resident' | 'individual')} 
+                    className="w-full border border-gray-300 rounded-xl p-3 bg-white font-bold text-sm text-gray-800 outline-none"
+                  >
+                    <option value="resident">📌 常駐タスク (引き継ぎ管理あり)</option>
+                    <option value="individual">⚡ 個別タスク (単発・ステージ運営など)</option>
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">タスクの説明</label>
+                <textarea 
+                  value={newTaskDescription} 
+                  onChange={e => setNewTaskDescription(e.target.value)} 
+                  className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
+                  placeholder="詳細や手順を入力..." 
+                  rows={2} 
+                />
+              </div>
+
+              {taskMode === 'prep' ? (
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">グループに割り当て</label>
+                  <select 
+                    value={newTaskGroup} 
+                    onChange={e => setNewTaskGroup(e.target.value)} 
+                    className="w-full border border-gray-300 rounded-xl p-3 bg-white font-bold text-sm text-gray-800 outline-none"
+                  >
+                    <option value="">(未分類)</option>
+                    {projectGroups.map(g => <option key={g.id} value={g.id}>▼ {g.name}</option>)}
+                  </select>
+                </div>
+              ) : null}
+
+              {taskMode === 'prep' ? (
+                <div className="flex items-center gap-2 bg-gray-100 rounded-xl p-3 border border-gray-200">
+                  <div className="flex flex-col gap-1 flex-1">
+                    <span className="text-xs font-bold text-gray-500">開始日</span>
+                    <input type="date" required value={newTaskStart} onChange={e => setNewTaskStart(e.target.value)} className="bg-white border border-gray-300 rounded-lg p-1.5 text-xs font-bold outline-none" />
+                  </div>
+                  <div className="flex flex-col gap-1 flex-1">
+                    <span className="text-xs font-bold text-gray-500">終了日</span>
+                    <input type="date" required value={newTaskEnd} onChange={e => setNewTaskEnd(e.target.value)} className="bg-white border border-gray-300 rounded-lg p-1.5 text-xs font-bold outline-none" />
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gray-100 rounded-xl p-3 border border-gray-200 flex flex-col gap-2">
+                  <span className="text-xs font-bold text-gray-500 text-center">⏰ アラーム風 時間設定（分単位）</span>
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="flex flex-col items-center flex-1">
+                      <span className="text-[10px] font-bold text-gray-400 mb-1">開始時間</span>
+                      <input type="time" required value={newTaskStartTime} onChange={e => setNewTaskStartTime(e.target.value)} className="w-full bg-white border-2 border-blue-400 rounded-xl py-2 px-2 text-center text-base font-extrabold text-blue-600 outline-none shadow-inner cursor-pointer" />
+                    </div>
+                    <span className="text-xl font-bold text-gray-400 mt-5">〜</span>
+                    <div className="flex flex-col items-center flex-1">
+                      <span className="text-[10px] font-bold text-gray-400 mb-1">終了時間</span>
+                      <input type="time" required value={newTaskEndTime} onChange={e => setNewTaskEndTime(e.target.value)} className="w-full bg-white border-2 border-blue-400 rounded-xl py-2 px-2 text-center text-base font-extrabold text-blue-600 outline-none shadow-inner cursor-pointer" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-2">
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-sm hover:bg-blue-700 transition-colors">
+                  {taskMode === 'prep' ? '準備タスクを作成' : '当日タスクを作成'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- タスク詳細・編集・削除モーダル --- */}
+      {selectedTask && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedTask(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden relative max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-lg text-gray-800">タスク編集・詳細</h3>
+                {selectedTask.taskStatus === 'completed' && (
+                  <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-bold border border-green-200">完了済</span>
+                )}
+              </div>
+              <button onClick={() => setSelectedTask(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+            </div>
+            
+            <div className="p-6 flex flex-col gap-4 overflow-y-auto">
+              <div>
+                <label className="block text-sm font-bold text-gray-500 mb-1">タスク名</label>
+                <input 
+                  type="text" 
+                  value={selectedTask.taskName} 
+                  disabled={project.status === 'completed'}
+                  onChange={e => updateSelectedTask({ taskName: e.target.value })} 
+                  className="w-full border border-gray-300 rounded-xl p-2.5 font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-gray-100" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-500 mb-1">説明</label>
+                <textarea 
+                  value={selectedTask.description || ''} 
+                  disabled={project.status === 'completed'}
+                  onChange={e => updateSelectedTask({ description: e.target.value })} 
+                  className="w-full border border-gray-200 rounded-xl p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100" 
+                  placeholder="説明を入力..." 
+                  rows={2} 
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                {selectedTask.taskMode === 'prep' && (
+                  <div>
+                    <label className="block text-sm font-bold text-gray-500 mb-1">担当グループ</label>
+                    <select 
+                      value={selectedTask.group} 
+                      disabled={project.status === 'completed'}
+                      onChange={e => updateSelectedTask({ group: e.target.value })} 
+                      className="w-full border border-gray-300 rounded-xl p-2 bg-white text-xs font-bold text-gray-800 outline-none disabled:bg-gray-100"
+                    >
+                      <option value="">(未分類)</option>
+                      {projectGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                <div className={selectedTask.taskMode === 'day' ? 'col-span-2' : ''}>
+                  <label className="block text-sm font-bold text-gray-500 mb-1">
+                    {selectedTask.taskMode === 'prep' ? '期間・日付' : '時間設定'}
+                  </label>
+                  {selectedTask.taskMode === 'prep' ? (
+                    <div className="flex flex-col gap-1">
+                      <input type="date" disabled={project.status === 'completed'} value={selectedTask.startDate} onChange={e => updateSelectedTask({ startDate: e.target.value })} className="w-full border border-gray-300 rounded-lg p-1 text-xs font-bold disabled:bg-gray-100" />
+                      <input type="date" disabled={project.status === 'completed'} value={selectedTask.endDate} onChange={e => updateSelectedTask({ endDate: e.target.value })} className="w-full border border-gray-300 rounded-lg p-1 text-xs font-bold disabled:bg-gray-100" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+                      <input type="time" disabled={project.status === 'completed'} value={selectedTask.startTime || '10:00'} onChange={e => updateSelectedTask({ startTime: e.target.value })} className="flex-1 border-2 border-blue-400 rounded-lg py-1 px-1 text-center text-sm font-extrabold text-blue-600 outline-none bg-white disabled:bg-gray-100" />
+                      <span className="font-bold text-gray-400">〜</span>
+                      <input type="time" disabled={project.status === 'completed'} value={selectedTask.endTime || '12:00'} onChange={e => updateSelectedTask({ endTime: e.target.value })} className="flex-1 border-2 border-blue-400 rounded-lg py-1 px-1 text-center text-sm font-extrabold text-blue-600 outline-none bg-white disabled:bg-gray-100" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-500 mb-1">割り当てメンバー</label>
+                <div className="flex flex-wrap gap-2 items-center bg-gray-50 p-2.5 rounded-xl border border-gray-200 min-h-12">
+                  {selectedTask.assignees?.map((name) => {
+                    const member = projectMembers.find(m => m.name === name);
+                    const colorClass = member ? member.color : 'bg-gray-400';
+                    return (
+                      <span key={name} className={`${colorClass} text-white px-2.5 py-1 rounded-full flex items-center justify-center text-xs font-bold shadow-sm`}>
+                        {name}
+                        {project.status === 'active' && (
+                          <button onClick={() => updateSelectedTask({ assignees: selectedTask.assignees?.filter(a => a !== name) })} className="ml-1.5 text-white hover:text-red-200">&times;</button>
+                        )}
+                      </span>
+                    );
+                  })}
+                  {project.status === 'active' && (
+                    <select 
+                      onChange={e => {
+                        if (e.target.value && !selectedTask.assignees?.includes(e.target.value)) {
+                          updateSelectedTask({ assignees: [...(selectedTask.assignees || []), e.target.value] });
+                        }
+                        e.target.value = '';
+                      }} 
+                      className="text-xs border rounded-lg p-1 bg-white outline-none"
+                    >
+                      <option value="">＋追加</option>
+                      {projectMembers.filter(m => !selectedTask.assignees?.includes(m.name)).map(m => (
+                        <option key={m.id} value={m.name}>{m.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {selectedTask.taskMode === 'day' && selectedTask.taskType === 'resident' && (
+                <div className="bg-pink-50 p-3 rounded-xl border border-pink-200 flex flex-col gap-2">
+                  <p className="text-xs font-bold text-pink-700">📌 常駐タスク引き継ぎ管理</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-bold">現在の担当: {selectedTask.currentId || '未割当'}</span>
+                    {project.status === 'active' && (
+                      <button type="button" onClick={() => handleHandover(selectedTask)} className="bg-pink-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm hover:bg-pink-700 transition-colors">
+                        次の担当者へ引き継ぎ &gt;
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {project.status === 'active' && (
+                <div className="mt-2 bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col gap-3">
+                  <p className="text-sm font-bold text-gray-500 mb-1">クイックアクション</p>
+                  <button 
+                    onClick={() => updateSelectedTask({ taskStatus: selectedTask.taskStatus === 'active' ? 'completed' : 'active' })} 
+                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 ${
+                      selectedTask.taskStatus === 'completed' ? 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' : 'bg-green-500 text-white hover:bg-green-600 shadow-sm'
+                    }`}
+                  >
+                    {selectedTask.taskStatus === 'completed' ? '「未完了」に戻す' : '✓ タスクを完了にする'}
+                  </button>
+                  <button 
+                    onClick={() => updateSelectedTask({ needHelp: !selectedTask.needHelp })} 
+                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 border ${
+                      selectedTask.needHelp ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' : 'bg-white border-red-300 text-red-500 hover:bg-red-50'
+                    }`}
+                  >
+                    {selectedTask.needHelp ? 'ヘルプ要請を取り下げる' : '🆘 ヘルプ(SOS)を要請する'}
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-4 pt-4 border-t border-gray-100 flex gap-3 shrink-0">
+                <button onClick={() => setSelectedTask(null)} className="flex-1 py-2.5 border border-gray-300 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-colors">閉じる</button>
+                {project.status === 'active' && (
+                  <button onClick={handleDeleteTask} className="flex-1 py-2.5 bg-white border border-red-200 text-red-500 font-bold rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center gap-1">
+                    削除する
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
