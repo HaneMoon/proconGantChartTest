@@ -239,7 +239,7 @@ export default function ProjectManagerView({
     const actualStart = newTaskStart <= newTaskEnd ? newTaskStart : newTaskEnd;
     const actualEnd = newTaskStart <= newTaskEnd ? newTaskEnd : newTaskStart;
 
-    const newTask: Task = {
+    const baseTask: Task = {
       taskId: `task_${Date.now()}`,
       projectId: project.id,
       taskMode: taskMode,
@@ -250,16 +250,21 @@ export default function ProjectManagerView({
       startDate: actualStart,
       endDate: actualEnd,
       description: newTaskDescription,
-      taskType: taskMode === 'day' ? newTaskType : undefined,
-      startTime: taskMode === 'day' ? newTaskStartTime : undefined,
-      endTime: taskMode === 'day' ? newTaskEndTime : undefined,
-      currentId: taskMode === 'day' && newTaskType === 'resident' && newTaskAssignees.length > 0 ? newTaskAssignees[0] : undefined,
       color: taskMode === 'day' ? (newTaskType === 'resident' ? 'bg-pink-500' : 'bg-blue-500') : 'bg-blue-500',
       assignees: newTaskAssignees,
       remind: '締め切り日の2日前',
     };
 
-    setTasks([...tasks, newTask]);
+    if (taskMode === 'day') {
+      baseTask.taskType = newTaskType;
+      baseTask.startTime = newTaskStartTime;
+      baseTask.endTime = newTaskEndTime;
+      if (newTaskType === 'resident' && newTaskAssignees.length > 0) {
+        baseTask.currentId = newTaskAssignees[0];
+      }
+    }
+
+    setTasks([...tasks, baseTask]);
     setIsTaskModalOpen(false);
   };
 
@@ -310,6 +315,14 @@ export default function ProjectManagerView({
   const updateSelectedTask = (updates: Partial<Task>) => {
     if (!selectedTask || project.status === 'completed') return;
     const updated = { ...selectedTask, ...updates };
+    
+    // undefined プロパティを安全にクリーンアップ
+    (Object.keys(updated) as (keyof Task)[]).forEach((key) => {
+      if (updated[key] === undefined) {
+        delete updated[key];
+      }
+    });
+
     setTasks(tasks.map(t => t.taskId === selectedTask.taskId ? updated : t));
     setSelectedTask(updated);
   };
@@ -446,6 +459,10 @@ export default function ProjectManagerView({
             />
           ) : currentNav === 'members' ? (
             <MemberView 
+              activeProjectId={project.id}
+              project={project}
+              setProjects={setProjects}
+              projects={projects}
               members={projectMembers} 
               setMembers={(newMembers: Member[]) => {
                 const otherMembers = members.filter(m => m.projectId !== project.id);
@@ -453,7 +470,6 @@ export default function ProjectManagerView({
                 setMembers([...otherMembers, ...updatedMembers]);
               }} 
               tasks={projectTasks} 
-              activeProjectId={project.id}
               groups={projectGroups}
               requestConfirm={requestConfirm}
             />
@@ -701,7 +717,7 @@ export default function ProjectManagerView({
                     className="w-full border border-gray-300 rounded-xl p-3 bg-white font-bold text-sm text-gray-800 outline-none"
                   >
                     <option value="">(未分類)</option>
-                    {projectGroups.map(g => <option key={g.id} value={g.id}>▼ {g.name}</option>)}
+                    {projectGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
                 </div>
               ) : null}
