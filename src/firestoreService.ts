@@ -13,7 +13,6 @@ import {
 import { db } from './firebase';
 import type { Project, Task, Group, Expense, Memo, Member, User } from './types';
 
-// undefined のキーを再帰的に取り除いてFirestore安全なオブジェクトに変換する関数
 const sanitizeData = <T extends Record<string, unknown>>(data: T): Record<string, unknown> => {
   const result: Record<string, unknown> = {};
   Object.keys(data).forEach((key) => {
@@ -30,18 +29,36 @@ const sanitizeData = <T extends Record<string, unknown>>(data: T): Record<string
 };
 
 // ==================== Users ====================
+export const getUserDoc = async (userId: string): Promise<User | null> => {
+  const docRef = doc(db, 'users', userId);
+  const docSnap = await getDoc(docRef);
+  if (!docSnap.exists()) return null;
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    name: data.name || '',
+    username: data.username || '',
+    email: data.email || '',
+    avatarUrl: data.avatarUrl || '',
+    color: data.color || 'bg-blue-600',
+    createdAt: data.createdAt?.toMillis?.() || data.createdAt || Date.now()
+  };
+};
+
 export const saveUserDoc = async (user: User) => {
   const docRef = doc(db, 'users', user.id);
   const data = sanitizeData({
     name: user.name,
+    username: user.username || '',
     email: user.email ? user.email.toLowerCase() : '',
     avatarUrl: user.avatarUrl || '',
-    updatedAt: serverTimestamp()
+    color: user.color || 'bg-blue-600',
+    updatedAt: serverTimestamp(),
+    createdAt: user.createdAt ? user.createdAt : serverTimestamp()
   });
   await setDoc(docRef, data, { merge: true });
 };
 
-// メールアドレスからユーザーを検索（完全一致・小文字化）
 export const findUserByEmail = async (email: string): Promise<User | null> => {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail) return null;
@@ -53,8 +70,10 @@ export const findUserByEmail = async (email: string): Promise<User | null> => {
   return {
     id: docSnap.id,
     name: data.name || 'ユーザー',
+    username: data.username || '',
     email: data.email || '',
-    avatarUrl: data.avatarUrl || ''
+    avatarUrl: data.avatarUrl || '',
+    color: data.color || 'bg-blue-600'
   };
 };
 
@@ -192,7 +211,6 @@ export const subscribeProjectData = (
     callbacks.setMemos(memos);
   });
 
-  // プロジェクトの memberIds を監視し、users コレクションから最新のユーザー情報を取得してメンバー一覧を作成
   const unsubProjectDoc = onSnapshot(projectDocRef, async (snap) => {
     if (!snap.exists()) return;
     const pData = snap.data();
@@ -206,7 +224,8 @@ export const subscribeProjectData = (
         id: uid,
         projectId,
         name: uData?.name || `メンバー (${uid.slice(0, 5)})`,
-        color: colors[index % colors.length]
+        avatarUrl: uData?.avatarUrl || undefined,
+        color: uData?.color || colors[index % colors.length]
       } as Member;
     });
 
@@ -223,7 +242,6 @@ export const subscribeProjectData = (
   };
 };
 
-// ==================== Subcollection Single Write / Delete Helpers ====================
 export const saveTaskDoc = async (projectId: string, task: Task) => {
   const docRef = doc(db, 'projects', projectId, 'tasks', task.taskId);
   const data = sanitizeData({

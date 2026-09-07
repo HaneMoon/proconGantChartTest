@@ -4,6 +4,7 @@ import { initialGroups, initialExpenses, initialMemos, initialMembers } from './
 import LoginView from './LoginView';
 import HomeView from './HomeView';
 import ProjectManagerView from './ProjectManagerView';
+import ProfileView from './ProfileView';
 import { auth, signOut } from './firebase';
 import { 
   subscribeUserProjects, 
@@ -32,6 +33,7 @@ export default function App() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeInitialMode, setActiveInitialMode] = useState<'prep' | 'day'>('prep');
   const [activeInitialView, setActiveInitialView] = useState<'gantt' | 'retrospective'>('gantt');
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -43,7 +45,6 @@ export default function App() {
   const requestConfirm = (options: ConfirmOptions) => setConfirmState({ ...options, isOpen: true });
   const closeConfirm = () => setConfirmState(prev => prev ? { ...prev, isOpen: false } : null);
 
-  // 1. ユーザーのプロジェクト一覧をリアルタイム購読
   useEffect(() => {
     if (!currentUser) return;
     const unsubscribe = subscribeUserProjects(currentUser.id, (loadedProjects) => {
@@ -52,7 +53,6 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 2. 選択中プロジェクトのサブコレクションをリアルタイム購読
   useEffect(() => {
     if (!activeProjectId) return;
 
@@ -79,12 +79,14 @@ export default function App() {
     localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
   };
 
-  // State更新ラッパー: 新規プロジェクト作成時に memberIds に自分のIDを自動付与
+  const handleUpdateUser = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
+    localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser));
+  };
+
   const handleSetProjects: React.Dispatch<React.SetStateAction<Project[]>> = (valueOrUpdater) => {
     setProjects(prev => {
       const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(prev) : valueOrUpdater;
-      
-      // 新規作成されたプロジェクトに memberIds が無ければ currentUser.id を追加
       const processedNext = next.map(p => {
         if (!p.memberIds || p.memberIds.length === 0) {
           return { ...p, memberIds: currentUser ? [currentUser.id] : [] };
@@ -152,7 +154,13 @@ export default function App() {
       <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-white md:bg-gray-50 md:p-6">
         <div className={`flex-1 flex flex-col h-full relative bg-white ${activeProjectId ? 'md:rounded-2xl md:shadow-sm md:border md:border-gray-200' : ''} overflow-hidden`}>
           
-          {!activeProjectId ? (
+          {isProfileOpen ? (
+            <ProfileView
+              currentUser={currentUser}
+              onUpdateUser={handleUpdateUser}
+              onBack={() => setIsProfileOpen(false)}
+            />
+          ) : !activeProjectId ? (
             <HomeView 
               projects={projects}
               setProjects={handleSetProjects}
@@ -165,6 +173,7 @@ export default function App() {
                 if (mode) setActiveInitialMode(mode);
               }}
               currentUser={currentUser}
+              onOpenProfile={() => setIsProfileOpen(true)}
               onLogout={() => {
                 requestConfirm({
                   title: 'ログアウト',
@@ -199,6 +208,7 @@ export default function App() {
               initialMode={activeInitialMode}
               initialView={activeInitialView}
               onBackToHome={() => setActiveProjectId(null)}
+              onOpenProfile={() => setIsProfileOpen(true)}
               requestConfirm={requestConfirm}
             />
           ) : null}

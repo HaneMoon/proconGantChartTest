@@ -1,10 +1,12 @@
 export type User = {
   id: string;
   name: string;
+  username?: string;
   email?: string;
   iconUrl?: string;
   avatarUrl?: string;
   color?: string;
+  createdAt?: number;
 };
 
 export type Project = {
@@ -88,6 +90,7 @@ export type Member = {
   id: string;
   projectId: string;
   name: string;
+  avatarUrl?: string;
   color: string;
   isMe?: boolean;
 };
