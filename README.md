@@ -1,7 +1,8 @@
 実行環境をメモっておくよ
-node.js : 22.21.1  、
+node.js : 24.20.0  、(voltaで管理推奨)
 bun　： 1.3.2
 
+viteがないとエラーが出てきたら、node_moduleのファイル全部とpackage-lock.jsonを消して　npm install  とコマンドを打つと起動できるかも
 
 
 
