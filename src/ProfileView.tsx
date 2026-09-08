@@ -8,6 +8,51 @@ type ProfileViewProps = {
   onBack: () => void;
 };
 
+// 画像をアバターサイズに圧縮・リサイズする関数（最大128px四方、品質0.75）
+const resizeAndCompressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 128;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas context is not available'));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        // 軽量なJPEG形式に変換 (容量はおよそ10〜30KB程度に収まります)
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        resolve(compressedDataUrl);
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 export default function ProfileView({ currentUser, onUpdateUser, onBack }: ProfileViewProps) {
   const [nickname, setNickname] = useState(currentUser.name || '');
   const [avatarPreview, setAvatarPreview] = useState<string | undefined>(currentUser.avatarUrl);
@@ -16,7 +61,6 @@ export default function ProfileView({ currentUser, onUpdateUser, onBack }: Profi
   const [saveMessage, setSaveMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // ユーザーIDはメールアドレスの@前を採用
   const defaultUsername = currentUser.email ? currentUser.email.split('@')[0] : (currentUser.username || 'user');
 
   const handleCopyUid = () => {
@@ -25,21 +69,17 @@ export default function ProfileView({ currentUser, onUpdateUser, onBack }: Profi
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 画像サイズチェック (最大2MB程度)
-    if (file.size > 2 * 1024 * 1024) {
-      alert('画像サイズは2MB以下にしてください。');
-      return;
+    try {
+      const compressedImage = await resizeAndCompressImage(file);
+      setAvatarPreview(compressedImage);
+    } catch (error) {
+      console.error('画像の処理に失敗しました:', error);
+      alert('画像の処理に失敗しました。別の画像をお試しください。');
     }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setAvatarPreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -88,7 +128,6 @@ export default function ProfileView({ currentUser, onUpdateUser, onBack }: Profi
           </div>
         )}
 
-        {/* アバター写真登録エリア */}
         <div className="flex flex-col items-center gap-3 pb-6 border-b border-gray-100 text-center">
           <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
             {avatarPreview ? (
@@ -130,7 +169,6 @@ export default function ProfileView({ currentUser, onUpdateUser, onBack }: Profi
           </div>
         </div>
 
-        {/* UID確認・コピーエリア */}
         <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 flex flex-col gap-2">
           <div className="flex justify-between items-center">
             <span className="text-xs font-bold text-gray-500">あなたの Google UID</span>
@@ -152,7 +190,6 @@ export default function ProfileView({ currentUser, onUpdateUser, onBack }: Profi
           </p>
         </div>
 
-        {/* 編集フォーム */}
         <form onSubmit={handleSave} className="flex flex-col gap-5">
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-1">

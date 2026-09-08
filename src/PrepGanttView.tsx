@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect, useRef } from 'react';
 import type { Task, Group, DateItem } from './types';
 
 type PrepGanttViewProps = {
@@ -9,14 +9,51 @@ type PrepGanttViewProps = {
   onSelectGroup: (group: Group) => void;
   onAddGroup: () => void;
   dateRowRefs: React.MutableRefObject<{ [key: string]: HTMLDivElement | null }>;
+  onVisibleMonthChange?: (yearMonth: string) => void;
 };
 
-export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSelectGroup, onAddGroup, dateRowRefs }: PrepGanttViewProps) {
+export default function PrepGanttView({
+  tasks,
+  groups,
+  dates,
+  onSelectTask,
+  onSelectGroup,
+  onAddGroup,
+  dateRowRefs,
+  onVisibleMonthChange
+}: PrepGanttViewProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const startRow = 2;
+
   const getRowByDateString = useCallback((dateStr: string) => {
     const index = dates.findIndex(d => d.dateString === dateStr);
     return index !== -1 ? index + startRow : startRow; 
   }, [dates]);
+
+  // スクロール時に画面上部に見えている日付の「年月」を検知して親に通知
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !onVisibleMonthChange || dates.length === 0) return;
+
+    const handleScroll = () => {
+      const headerOffset = 60; // ヘッダー行の高さ
+      const containerTop = container.getBoundingClientRect().top;
+
+      for (const d of dates) {
+        const el = dateRowRefs.current[d.dateString];
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top - containerTop >= -10 && rect.top - containerTop <= headerOffset + 80) {
+            onVisibleMonthChange(d.yearMonth);
+            break;
+          }
+        }
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [dates, dateRowRefs, onVisibleMonthChange]);
 
   const layoutData = useMemo(() => {
     const groupCols: Record<string, { taskId: string, subCol: number }[]> = {};
@@ -26,43 +63,44 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
     const allGroupIds = ['', ...groups.map(g => g.id)];
     
     allGroupIds.forEach(gid => {
-        const gTasks = tasks.filter(t => t.taskMode === 'prep' && (t.group || '') === gid)
-                            .sort((a, b) => getRowByDateString(a.startDate) - getRowByDateString(b.startDate));
-        
-        const cols: number[] = []; 
-        const taskLayout: { taskId: string, subCol: number }[] = [];
-        
-        gTasks.forEach(t => {
-            const start = getRowByDateString(t.startDate);
-            const end = getRowByDateString(t.endDate) + 1;
-            let placed = false;
-            for(let i=0; i<cols.length; i++) {
-                if (cols[i] <= start) { 
-                    cols[i] = end;
-                    taskLayout.push({ taskId: t.taskId, subCol: i });
-                    placed = true;
-                    break;
-                }
-            }
-            if (!placed) {
-                cols.push(end);
-                taskLayout.push({ taskId: t.taskId, subCol: cols.length - 1 });
-            }
-        });
-        groupCols[gid] = taskLayout;
-        groupMaxCols[gid] = Math.max(1, cols.length); 
-
-        if (gid !== '') {
-            const comp = gTasks.filter(t => t.taskStatus === 'completed').length;
-            groupProgress[gid] = gTasks.length > 0 ? Math.round((comp / gTasks.length) * 100) : 0;
+      const gTasks = tasks
+        .filter(t => t.taskMode === 'prep' && (t.group || '') === gid)
+        .sort((a, b) => getRowByDateString(a.startDate) - getRowByDateString(b.startDate));
+      
+      const cols: number[] = []; 
+      const taskLayout: { taskId: string, subCol: number }[] = [];
+      
+      gTasks.forEach(t => {
+        const start = getRowByDateString(t.startDate);
+        const end = getRowByDateString(t.endDate) + 1;
+        let placed = false;
+        for (let i = 0; i < cols.length; i++) {
+          if (cols[i] <= start) { 
+            cols[i] = end;
+            taskLayout.push({ taskId: t.taskId, subCol: i });
+            placed = true;
+            break;
+          }
         }
+        if (!placed) {
+          cols.push(end);
+          taskLayout.push({ taskId: t.taskId, subCol: cols.length - 1 });
+        }
+      });
+      groupCols[gid] = taskLayout;
+      groupMaxCols[gid] = Math.max(1, cols.length); 
+
+      if (gid !== '') {
+        const comp = gTasks.filter(t => t.taskStatus === 'completed').length;
+        groupProgress[gid] = gTasks.length > 0 ? Math.round((comp / gTasks.length) * 100) : 0;
+      }
     });
 
     let currentCol = 2; 
     const groupStartCol: Record<string, number> = {};
     allGroupIds.forEach(gid => {
-        groupStartCol[gid] = currentCol;
-        currentCol += groupMaxCols[gid];
+      groupStartCol[gid] = currentCol;
+      currentCol += groupMaxCols[gid];
     });
 
     return { groupCols, groupMaxCols, groupStartCol, totalCols: currentCol, groupProgress, allGroupIds };
@@ -75,7 +113,7 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-white relative w-full h-full">
+    <div ref={containerRef} className="flex-1 overflow-auto bg-white relative w-full h-full">
       <div 
         className="grid w-full"
         style={{
@@ -155,7 +193,6 @@ export default function PrepGanttView({ tasks, groups, dates, onSelectTask, onSe
         {tasks.filter(t => t.taskMode === 'prep').map(t => {
           const start = getRowByDateString(t.startDate);
           const end = getRowByDateString(t.endDate) + 1; 
-          // 存在しないグループIDの場合は未分類('')にフォールバック
           const gid = (t.group && groupCols[t.group]) ? t.group : '';
           const targetGroupCols = groupCols[gid] || [];
           const layout = targetGroupCols.find(l => l.taskId === t.taskId);

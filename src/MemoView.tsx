@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import type { Memo, User, ConfirmOptions, Reaction } from './types';
+import type { Memo, User, Member, ConfirmOptions, Reaction } from './types';
 
 type MemoViewProps = {
   activeProjectId: string;
   memos: Memo[];
   setMemos: (memos: Memo[]) => void;
+  members: Member[];
   currentUser: User;
   isReadOnly?: boolean;
   requestConfirm: (options: ConfirmOptions) => void;
@@ -16,6 +17,7 @@ export default function MemoView({
   activeProjectId,
   memos,
   setMemos,
+  members,
   currentUser,
   isReadOnly = false,
   requestConfirm
@@ -47,7 +49,7 @@ export default function MemoView({
     if (isReadOnly) return;
     requestConfirm({
       title: 'メモの削除',
-      message: 'このメッセージを削除しますか？',
+      message: 'このメッセージを削除しますか？\n（削除したメッセージは元に戻せません）',
       confirmText: '削除する',
       isDanger: true,
       onConfirm: () => {
@@ -109,7 +111,7 @@ export default function MemoView({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-5">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-28 flex flex-col gap-5">
         {memos.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
             <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-3xl">
@@ -121,6 +123,18 @@ export default function MemoView({
         ) : (
           memos.map((memo) => {
             const isMe = memo.authorId === currentUser.id;
+
+            const matchedMember = members.find((m) => m.id === memo.authorId);
+            const authorDisplayName = isMe
+              ? 'あなた'
+              : matchedMember?.name || memo.authorName || 'メンバー';
+            const authorAvatar = isMe
+              ? currentUser.avatarUrl
+              : matchedMember?.avatarUrl || memo.authorIcon;
+            const authorBadgeColor = isMe
+              ? 'bg-blue-600'
+              : matchedMember?.color || memo.authorColor || 'bg-gray-500';
+
             const isPickerOpen = activePickerMemoId === memo.id;
 
             return (
@@ -132,39 +146,43 @@ export default function MemoView({
               >
                 {/* ユーザーアバター */}
                 <div className="shrink-0 pt-0.5">
-                  {memo.authorIcon ? (
+                  {authorAvatar ? (
                     <img
-                      src={memo.authorIcon}
-                      alt={memo.authorName}
+                      src={authorAvatar}
+                      alt={authorDisplayName}
                       className="w-9 h-9 rounded-full border border-gray-200 object-cover shadow-xs"
                     />
                   ) : (
                     <div
-                      className={`w-9 h-9 rounded-full ${
-                        isMe ? 'bg-blue-600' : 'bg-gray-500'
-                      } text-white font-black text-sm flex items-center justify-center shadow-xs`}
+                      className={`w-9 h-9 rounded-full ${authorBadgeColor} text-white font-black text-sm flex items-center justify-center shadow-xs`}
                     >
-                      {memo.authorName.charAt(0)}
+                      {(authorDisplayName === 'あなた' ? currentUser.name : authorDisplayName).charAt(0)}
                     </div>
                   )}
                 </div>
 
-                <div className={`flex flex-col gap-1 ${isMe ? 'items-end' : 'items-start'} relative`}>
+                <div className={`flex flex-col gap-1.5 ${isMe ? 'items-end' : 'items-start'} relative`}>
+                  {/* 投稿者名 ＆ 削除ボタン */}
                   <div className="flex items-center gap-2 px-1">
                     <span className="text-xs font-extrabold text-gray-600">
-                      {isMe ? 'あなた' : memo.authorName}
+                      {authorDisplayName}
                     </span>
                     {isMe && !isReadOnly && (
                       <button
-                        onClick={() => handleDeleteMemo(memo.id)}
-                        className="text-[11px] font-bold text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                        title="メッセージを削除"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteMemo(memo.id);
+                        }}
+                        className="text-xs text-gray-400 hover:text-red-500 transition-colors p-0.5 rounded cursor-pointer flex items-center gap-0.5"
+                        title="このメモを削除"
                       >
-                        削除
+                        <span>🗑️</span>
+                        <span className="text-[10px] hidden sm:inline">削除</span>
                       </button>
                     )}
                   </div>
 
+                  {/* 吹き出し */}
                   <div
                     className={`p-3.5 rounded-2xl shadow-xs text-sm leading-relaxed whitespace-pre-wrap wrap-break-word ${
                       isMe
@@ -175,7 +193,7 @@ export default function MemoView({
                     {memo.content}
                   </div>
 
-                  {/* リアクション表示 ＆ ＋ボタン */}
+                  {/* リアクション一覧 ＆ ＋ボタンエリア */}
                   <div className={`flex flex-wrap items-center gap-1.5 mt-0.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
                     {memo.reactions?.map((reaction) => {
                       const hasReacted = reaction.userIds?.includes(currentUser.id);
@@ -183,37 +201,41 @@ export default function MemoView({
                         <button
                           key={reaction.text}
                           onClick={() => handleToggleReaction(memo.id, reaction.text)}
-                          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold border transition-all cursor-pointer ${
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer ${
                             hasReacted
                               ? 'bg-blue-50 border-blue-400 text-blue-600 shadow-xs'
-                              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 shadow-2xs'
                           }`}
                         >
-                          <span>{reaction.text}</span>
-                          <span>{reaction.count}</span>
+                          <span className="text-sm leading-none">{reaction.text}</span>
+                          <span className="text-xs">{reaction.count}</span>
                         </button>
                       );
                     })}
 
-                    {/* Slack風 スタンプ追加トリガーボタン（初期は薄く表示、ホバーで強調） */}
+                    {/* スタンプ追加ボタン */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setActivePickerMemoId(isPickerOpen ? null : memo.id);
                       }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity bg-white border border-gray-200 hover:bg-gray-50 text-gray-500 hover:text-gray-800 rounded-full px-2 py-0.5 text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1"
+                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold border transition-all shadow-2xs cursor-pointer ${
+                        isPickerOpen
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                          : 'bg-gray-50 hover:bg-white border-gray-300 text-gray-600 hover:text-blue-600 hover:border-blue-400'
+                      }`}
                       title="リアクションを追加"
                     >
-                      <span>😀</span>
-                      <span className="text-[10px] leading-none">＋</span>
+                      {/* <span className="text-sm leading-none">😀</span> */}
+                      <span className="text-[11px] leading-none font-extrabold">＋</span>
                     </button>
                   </div>
 
-                  {/* Slack風 絵文字ピッカー（展開時ポップアップ） */}
+                  {/* Slack風 絵文字ピッカー */}
                   {isPickerOpen && (
                     <div
-                      className={`absolute top-full mt-1 z-30 bg-white border border-gray-200 shadow-lg rounded-2xl p-1.5 flex items-center gap-1 animate-in fade-in zoom-in duration-150 ${
+                      className={`absolute top-full mt-2 z-30 bg-white border border-gray-200 shadow-xl rounded-2xl p-2 flex items-center gap-1.5 animate-in fade-in zoom-in duration-150 ${
                         isMe ? 'right-0' : 'left-0'
                       }`}
                       onClick={(e) => e.stopPropagation()}
@@ -223,7 +245,7 @@ export default function MemoView({
                           key={emoji}
                           type="button"
                           onClick={() => handleToggleReaction(memo.id, emoji)}
-                          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-base transition-transform hover:scale-125 cursor-pointer"
+                          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-blue-50 text-base transition-transform hover:scale-125 cursor-pointer"
                         >
                           {emoji}
                         </button>
@@ -238,7 +260,7 @@ export default function MemoView({
       </div>
 
       {!isReadOnly && (
-        <div className="p-3 md:p-4 bg-white border-t border-gray-200 shrink-0 shadow-sm">
+        <div className="p-3 md:p-4 bg-white border-t border-gray-200 shrink-0 shadow-sm z-20">
           <form onSubmit={handleAddMemo} className="max-w-4xl mx-auto flex items-end gap-2">
             <div className="flex-1 relative">
               <textarea

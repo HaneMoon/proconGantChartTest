@@ -7,6 +7,49 @@ type LoginViewProps = {
   onLogin: (user: User) => void;
 };
 
+const resizeAndCompressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 128;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas context is not available'));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        resolve(compressedDataUrl);
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 export default function LoginView({ onLogin }: LoginViewProps) {
   const [step, setStep] = useState<'login' | 'register'>('login');
   const [pendingUser, setPendingUser] = useState<User | null>(null);
@@ -44,20 +87,17 @@ export default function LoginView({ onLogin }: LoginViewProps) {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('画像サイズは2MB以下にしてください。');
-      return;
+    try {
+      const compressed = await resizeAndCompressImage(file);
+      setAvatarPreview(compressed);
+    } catch (error) {
+      console.error('画像処理エラー:', error);
+      alert('画像の処理に失敗しました。');
     }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setAvatarPreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleCompleteRegistration = async (e: React.FormEvent) => {
@@ -88,7 +128,6 @@ export default function LoginView({ onLogin }: LoginViewProps) {
     <div className="flex h-screen w-full items-center justify-center bg-gray-50 px-4 font-sans">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-gray-100 p-8 flex flex-col items-center text-center gap-6">
         
-        {/* ヘッダー風のLeanConnectロゴエリア */}
         <div className="flex flex-col items-center gap-2">
           <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30 text-white">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -140,7 +179,6 @@ export default function LoginView({ onLogin }: LoginViewProps) {
               <p className="text-xs text-gray-400 mt-0.5">LeanConnect内で表示される名前・写真を設定してください</p>
             </div>
 
-            {/* 写真登録・プレビュー */}
             <div className="flex flex-col items-center gap-2 my-1">
               <div
                 className="relative group cursor-pointer"

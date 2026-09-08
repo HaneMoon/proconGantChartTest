@@ -46,7 +46,6 @@ export default function ProjectManagerView({
   memos,
   setMemos,
   members,
-  setMembers,
   initialMode,
   initialView,
   onBackToHome,
@@ -394,7 +393,6 @@ export default function ProjectManagerView({
           })}
         </nav>
 
-        {/* サイドバー下部：自分のプロフィールボタン */}
         {onOpenProfile && (
           <div className="p-4 border-t border-gray-200 shrink-0">
             <button
@@ -487,6 +485,7 @@ export default function ProjectManagerView({
                 const updatedMemos = newMemos.map(m => ({ ...m, projectId: project.id }));
                 setMemos([...otherMemos, ...updatedMemos]);
               }} 
+              members={projectMembers}
               activeProjectId={project.id}
               currentUser={currentUser} 
               requestConfirm={requestConfirm}
@@ -498,7 +497,6 @@ export default function ProjectManagerView({
               setProjects={setProjects}
               projects={projects}
               members={projectMembers} 
-              setMembers={setMembers} 
               tasks={projectTasks} 
               groups={projectGroups}
               requestConfirm={requestConfirm}
@@ -569,6 +567,7 @@ export default function ProjectManagerView({
                     onSelectGroup={setSelectedGroup}
                     onAddGroup={() => setIsGroupModalOpen(true)}
                     dateRowRefs={dateRowRefs}
+                    onVisibleMonthChange={setSelectedYearMonth}
                   />
                 ) : (
                   <DayTimelineView 
