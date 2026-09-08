@@ -344,7 +344,7 @@ export default function ProjectManagerView({
   };
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row h-full bg-white relative overflow-hidden font-sans">
+    <div className="flex-1 flex flex-col md:flex-row h-full w-full bg-white relative overflow-hidden font-sans">
       
       {/* --- PC用 サイドバー --- */}
       <aside className="hidden md:flex flex-col w-64 bg-gray-50 border-r border-gray-200 shrink-0 z-20">
@@ -419,11 +419,11 @@ export default function ProjectManagerView({
       </aside>
 
       {/* --- メインビュー内容（右側） --- */}
-      <div className="flex-1 flex flex-col overflow-hidden relative">
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         
         {/* SP用ヘッダー */}
-        <header className="md:hidden h-16 border-b border-gray-200 px-4 flex items-center justify-between shrink-0 bg-white z-20">
-          <div className="flex items-center text-lg font-bold overflow-hidden">
+        <header className="md:hidden h-14 border-b border-gray-200 px-4 flex items-center justify-between shrink-0 bg-white z-20">
+          <div className="flex items-center text-base font-bold overflow-hidden">
             <button onClick={onBackToHome} className="mr-2 p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
             </button>
@@ -455,7 +455,8 @@ export default function ProjectManagerView({
           </div>
         </header>
 
-        <div className="flex-1 overflow-hidden flex flex-col relative">
+        {/* コンテンツエリア（ナビゲーションバーの高さ分を確保） */}
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
           {currentNav === 'retrospective' ? (
             <RetrospectiveView 
               project={project} 
@@ -510,14 +511,14 @@ export default function ProjectManagerView({
               requestConfirm={requestConfirm}
             />
           ) : (
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               
               {/* モード切替タブ */}
-              <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-center items-center shrink-0 z-30">
+              <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex justify-center items-center shrink-0 z-30">
                 <div className="flex bg-gray-100 rounded-xl p-1 w-full max-w-sm text-sm shadow-inner">
                   <button 
                     onClick={() => setTaskMode('prep')}
-                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
+                    className={`flex-1 py-1.5 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
                       taskMode === 'prep' ? 'text-blue-600 bg-white shadow-xs' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -525,7 +526,7 @@ export default function ProjectManagerView({
                   </button>
                   <button 
                     onClick={() => setTaskMode('day')}
-                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
+                    className={`flex-1 py-1.5 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
                       taskMode === 'day' ? 'text-blue-600 bg-white shadow-xs' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -540,24 +541,24 @@ export default function ProjectManagerView({
                   <button 
                     onClick={handlePrevMonth} 
                     disabled={currentIndex <= 0}
-                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
+                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
                   </button>
-                  <div className="text-lg font-extrabold text-gray-800">
+                  <div className="text-base font-extrabold text-gray-800">
                     {selectedYearMonth ? `${selectedYearMonth.split('-')[0]}年 ${parseInt(selectedYearMonth.split('-')[1], 10)}月` : ''}
                   </div>
                   <button 
                     onClick={handleNextMonth} 
                     disabled={currentIndex >= availableYearMonths.length - 1}
-                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
+                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                   </button>
                 </div>
               )}
 
-              <div className="flex-1 overflow-hidden relative">
+              <div className="flex-1 min-h-0 overflow-hidden relative">
                 {taskMode === 'prep' ? (
                   <PrepGanttView 
                     tasks={projectTasks}
@@ -579,10 +580,10 @@ export default function ProjectManagerView({
                 )}
 
                 {project.status === 'active' && (
-                  <div className="absolute bottom-6 right-6 z-40">
+                  <div className="absolute bottom-4 right-4 z-40">
                     <button 
                       onClick={handleOpenTaskModal}
-                      className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-bold p-4 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
+                      className="bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all text-white font-bold p-3.5 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl cursor-pointer"
                     >
                       <span className="text-2xl font-light leading-none">＋</span>
                     </button>
@@ -593,8 +594,8 @@ export default function ProjectManagerView({
           )}
         </div>
 
-        {/* --- SP用 ボトムナビゲーションバー --- */}
-        <nav className="md:hidden h-16 bg-white border-t border-gray-200 flex justify-around items-center text-[10px] text-gray-500 shrink-0 z-40">
+        {/* --- SP用 ボトムナビゲーションバー（最下部固定） --- */}
+        <nav className="md:hidden h-16 bg-white border-t border-gray-200 flex justify-around items-center text-[10px] text-gray-500 shrink-0 z-40 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
           {[
             { id: 'gantt', label: 'チャート', iconPath: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
             { id: 'members', label: 'メンバー', iconPath: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" },
@@ -607,11 +608,11 @@ export default function ProjectManagerView({
               <button 
                 key={`sp-nav-${item.id}`}
                 onClick={() => setCurrentNav(item.id as NavViewType)} 
-                className={`flex flex-col items-center transition-colors flex-1 py-2 cursor-pointer ${
+                className={`flex flex-col items-center justify-center transition-colors flex-1 h-full py-1 cursor-pointer active:bg-gray-50 ${
                   isActive ? 'text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.iconPath} />
                 </svg>
                 <span>{item.label}</span>
