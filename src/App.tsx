@@ -4,14 +4,24 @@ import { initialGroups, initialExpenses, initialMemos, initialMembers } from './
 import LoginView from './LoginView';
 import HomeView from './HomeView';
 import ProjectManagerView from './ProjectManagerView';
+import ProfileView from './ProfileView';
+import { auth, signOut } from './firebase';
+import { 
+  subscribeUserProjects, 
+  subscribeProjectData, 
+  saveProject, 
+  deleteProjectDoc,
+  saveTaskDoc,
+  deleteTaskDoc,
+  saveGroupDoc,
+  deleteGroupDoc,
+  saveExpenseDoc,
+  deleteExpenseDoc,
+  saveMemoDoc,
+  deleteMemoDoc
+} from './firestoreService';
 
 const STORAGE_KEY_USER = 'lean-connect-user';
-const STORAGE_KEY_PROJECTS = 'lean-connect-projects';
-const STORAGE_KEY_TASKS = 'lean-connect-tasks-v9';
-const STORAGE_KEY_GROUPS = 'lean-connect-groups-v5';
-const STORAGE_KEY_EXPENSES = 'lean-connect-expenses-v3';
-const STORAGE_KEY_MEMOS = 'lean-connect-memos-v3';
-const STORAGE_KEY_MEMBERS = 'lean-connect-members-v3';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -19,48 +29,121 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [projects, setProjects] = useState<Project[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_PROJECTS);
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeInitialMode, setActiveInitialMode] = useState<'prep' | 'day'>('prep');
   const [activeInitialView, setActiveInitialView] = useState<'gantt' | 'retrospective'>('gantt');
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  const [groups, setGroups] = useState<Group[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_GROUPS);
-    return saved ? JSON.parse(saved) : initialGroups;
-  });
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_TASKS);
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_EXPENSES);
-    return saved ? JSON.parse(saved) : initialExpenses;
-  });
-  const [memos, setMemos] = useState<Memo[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_MEMOS);
-    return saved ? JSON.parse(saved) : initialMemos;
-  });
-  const [members, setMembers] = useState<Member[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_MEMBERS);
-    return saved ? JSON.parse(saved) : initialMembers;
-  });
+  const [groups, setGroups] = useState<Group[]>(initialGroups);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
+  const [memos, setMemos] = useState<Memo[]>(initialMemos);
+  const [members, setMembers] = useState<Member[]>(initialMembers);
 
   const [confirmState, setConfirmState] = useState<(ConfirmOptions & { isOpen: boolean }) | null>(null);
   const requestConfirm = (options: ConfirmOptions) => setConfirmState({ ...options, isOpen: true });
   const closeConfirm = () => setConfirmState(prev => prev ? { ...prev, isOpen: false } : null);
 
-  useEffect(() => { if (currentUser) localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(currentUser)); }, [currentUser]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(projects)); }, [projects]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEY_GROUPS, JSON.stringify(groups)); }, [groups]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEY_EXPENSES, JSON.stringify(expenses)); }, [expenses]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEY_MEMOS, JSON.stringify(memos)); }, [memos]);
-  useEffect(() => { localStorage.setItem(STORAGE_KEY_MEMBERS, JSON.stringify(members)); }, [members]);
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubscribe = subscribeUserProjects(currentUser.id, (loadedProjects) => {
+      setProjects(loadedProjects);
+    });
+    return () => unsubscribe();
+  }, [currentUser]);
 
-  const handleLogin = (user: User) => setCurrentUser(user);
+  useEffect(() => {
+    if (!activeProjectId) return;
+
+    const unsubscribe = subscribeProjectData(activeProjectId, {
+      setTasks,
+      setGroups,
+      setExpenses,
+      setMemos,
+      setMembers
+    });
+
+    return () => {
+      unsubscribe();
+      setTasks([]);
+      setGroups(initialGroups);
+      setExpenses(initialExpenses);
+      setMemos(initialMemos);
+      setMembers(initialMembers);
+    };
+  }, [activeProjectId]);
+
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
+  };
+
+  const handleUpdateUser = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
+    localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser));
+  };
+
+  const handleSetProjects: React.Dispatch<React.SetStateAction<Project[]>> = (valueOrUpdater) => {
+    setProjects(prev => {
+      const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(prev) : valueOrUpdater;
+      const processedNext = next.map(p => {
+        if (!p.memberIds || p.memberIds.length === 0) {
+          return { ...p, memberIds: currentUser ? [currentUser.id] : [] };
+        }
+        return p;
+      });
+
+      const removed = prev.filter(p => !processedNext.some(np => np.id === p.id));
+      removed.forEach(p => deleteProjectDoc(p.id));
+      processedNext.forEach(p => saveProject(p));
+      return processedNext;
+    });
+  };
+
+  const handleSetTasks: React.Dispatch<React.SetStateAction<Task[]>> = (valueOrUpdater) => {
+    if (!activeProjectId) return;
+    setTasks(prev => {
+      const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(prev) : valueOrUpdater;
+      const removed = prev.filter(t => !next.some(nt => nt.taskId === t.taskId));
+      removed.forEach(t => deleteTaskDoc(activeProjectId, t.taskId));
+      next.forEach(t => saveTaskDoc(activeProjectId, t));
+      return next;
+    });
+  };
+
+  const handleSetGroups: React.Dispatch<React.SetStateAction<Group[]>> = (valueOrUpdater) => {
+    if (!activeProjectId) return;
+    setGroups(prev => {
+      const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(prev) : valueOrUpdater;
+      const removed = prev.filter(g => !next.some(ng => ng.id === g.id));
+      removed.forEach(g => deleteGroupDoc(activeProjectId, g.id));
+      next.forEach(g => saveGroupDoc(activeProjectId, g));
+      return next;
+    });
+  };
+
+  const handleSetExpenses: React.Dispatch<React.SetStateAction<Expense[]>> = (valueOrUpdater) => {
+    if (!activeProjectId) return;
+    setExpenses(prev => {
+      const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(prev) : valueOrUpdater;
+      const removed = prev.filter(e => !next.some(ne => ne.id === e.id));
+      removed.forEach(e => deleteExpenseDoc(activeProjectId, e.id));
+      next.forEach(e => saveExpenseDoc(activeProjectId, e));
+      return next;
+    });
+  };
+
+  const handleSetMemos: React.Dispatch<React.SetStateAction<Memo[]>> = (valueOrUpdater) => {
+    if (!activeProjectId) return;
+    setMemos(prev => {
+      const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(prev) : valueOrUpdater;
+      const removed = prev.filter(m => !next.some(nm => nm.id === m.id));
+      removed.forEach(m => deleteMemoDoc(activeProjectId, m.id));
+      next.forEach(m => saveMemoDoc(activeProjectId, m));
+      return next;
+    });
+  };
 
   const activeProject = projects.find(p => p.id === activeProjectId);
 
@@ -71,10 +154,16 @@ export default function App() {
       <main className="flex-1 flex flex-col h-full relative overflow-hidden bg-white md:bg-gray-50 md:p-6">
         <div className={`flex-1 flex flex-col h-full relative bg-white ${activeProjectId ? 'md:rounded-2xl md:shadow-sm md:border md:border-gray-200' : ''} overflow-hidden`}>
           
-          {!activeProjectId ? (
+          {isProfileOpen ? (
+            <ProfileView
+              currentUser={currentUser}
+              onUpdateUser={handleUpdateUser}
+              onBack={() => setIsProfileOpen(false)}
+            />
+          ) : !activeProjectId ? (
             <HomeView 
               projects={projects}
-              setProjects={setProjects}
+              setProjects={handleSetProjects}
               tasks={tasks}
               members={members}
               setMembers={setMembers}
@@ -84,13 +173,15 @@ export default function App() {
                 if (mode) setActiveInitialMode(mode);
               }}
               currentUser={currentUser}
+              onOpenProfile={() => setIsProfileOpen(true)}
               onLogout={() => {
                 requestConfirm({
                   title: 'ログアウト',
                   message: 'ログアウトしてログイン画面に戻りますか？',
                   confirmText: 'ログアウト',
                   isDanger: true,
-                  onConfirm: () => {
+                  onConfirm: async () => {
+                    await signOut(auth);
                     setCurrentUser(null);
                     localStorage.removeItem(STORAGE_KEY_USER);
                   }
@@ -103,20 +194,21 @@ export default function App() {
               project={activeProject}
               currentUser={currentUser}
               projects={projects}
-              setProjects={setProjects}
+              setProjects={handleSetProjects}
               tasks={tasks}
-              setTasks={setTasks}
+              setTasks={handleSetTasks}
               groups={groups}
-              setGroups={setGroups}
+              setGroups={handleSetGroups}
               expenses={expenses}
-              setExpenses={setExpenses}
+              setExpenses={handleSetExpenses}
               memos={memos}
-              setMemos={setMemos}
+              setMemos={handleSetMemos}
               members={members}
               setMembers={setMembers}
               initialMode={activeInitialMode}
               initialView={activeInitialView}
               onBackToHome={() => setActiveProjectId(null)}
+              onOpenProfile={() => setIsProfileOpen(true)}
               requestConfirm={requestConfirm}
             />
           ) : null}

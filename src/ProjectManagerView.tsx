@@ -26,6 +26,7 @@ type ProjectManagerViewProps = {
   initialMode: 'prep' | 'day';
   initialView: 'gantt' | 'retrospective';
   onBackToHome: () => void;
+  onOpenProfile?: () => void;
   requestConfirm: (options: ConfirmOptions) => void;
 };
 
@@ -45,10 +46,10 @@ export default function ProjectManagerView({
   memos,
   setMemos,
   members,
-  setMembers,
   initialMode,
   initialView,
   onBackToHome,
+  onOpenProfile,
   requestConfirm
 }: ProjectManagerViewProps) {
   const [currentNav, setCurrentNav] = useState<NavViewType>(initialView);
@@ -239,7 +240,7 @@ export default function ProjectManagerView({
     const actualStart = newTaskStart <= newTaskEnd ? newTaskStart : newTaskEnd;
     const actualEnd = newTaskStart <= newTaskEnd ? newTaskEnd : newTaskStart;
 
-    const newTask: Task = {
+    const baseTask: Task = {
       taskId: `task_${Date.now()}`,
       projectId: project.id,
       taskMode: taskMode,
@@ -250,16 +251,21 @@ export default function ProjectManagerView({
       startDate: actualStart,
       endDate: actualEnd,
       description: newTaskDescription,
-      taskType: taskMode === 'day' ? newTaskType : undefined,
-      startTime: taskMode === 'day' ? newTaskStartTime : undefined,
-      endTime: taskMode === 'day' ? newTaskEndTime : undefined,
-      currentId: taskMode === 'day' && newTaskType === 'resident' && newTaskAssignees.length > 0 ? newTaskAssignees[0] : undefined,
       color: taskMode === 'day' ? (newTaskType === 'resident' ? 'bg-pink-500' : 'bg-blue-500') : 'bg-blue-500',
       assignees: newTaskAssignees,
       remind: '締め切り日の2日前',
     };
 
-    setTasks([...tasks, newTask]);
+    if (taskMode === 'day') {
+      baseTask.taskType = newTaskType;
+      baseTask.startTime = newTaskStartTime;
+      baseTask.endTime = newTaskEndTime;
+      if (newTaskType === 'resident' && newTaskAssignees.length > 0) {
+        baseTask.currentId = newTaskAssignees[0];
+      }
+    }
+
+    setTasks([...tasks, baseTask]);
     setIsTaskModalOpen(false);
   };
 
@@ -310,6 +316,13 @@ export default function ProjectManagerView({
   const updateSelectedTask = (updates: Partial<Task>) => {
     if (!selectedTask || project.status === 'completed') return;
     const updated = { ...selectedTask, ...updates };
+    
+    (Object.keys(updated) as (keyof Task)[]).forEach((key) => {
+      if (updated[key] === undefined) {
+        delete updated[key];
+      }
+    });
+
     setTasks(tasks.map(t => t.taskId === selectedTask.taskId ? updated : t));
     setSelectedTask(updated);
   };
@@ -331,20 +344,20 @@ export default function ProjectManagerView({
   };
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row h-full bg-white relative overflow-hidden">
+    <div className="flex-1 flex flex-col md:flex-row h-full bg-white relative overflow-hidden font-sans">
       
       {/* --- PC用 サイドバー --- */}
       <aside className="hidden md:flex flex-col w-64 bg-gray-50 border-r border-gray-200 shrink-0 z-20">
         <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 shrink-0">
           <div className="flex items-center overflow-hidden">
-            <button onClick={onBackToHome} className="mr-2 p-1.5 rounded-full hover:bg-gray-200 text-gray-500 transition-colors shrink-0">
+            <button onClick={onBackToHome} className="mr-2 p-1.5 rounded-full hover:bg-gray-200 text-gray-500 transition-colors shrink-0 cursor-pointer">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
             </button>
             <span className="font-bold text-lg text-gray-800 truncate" title={project.name}>{project.name}</span>
           </div>
           <button 
             onClick={() => setCurrentNav('settings')}
-            className={`p-2 rounded-xl transition-colors shrink-0 ${currentNav === 'settings' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200'}`}
+            className={`p-2 rounded-xl transition-colors shrink-0 cursor-pointer ${currentNav === 'settings' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-200'}`}
             title="プロジェクト設定"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -367,8 +380,8 @@ export default function ProjectManagerView({
               <button 
                 key={`pc-nav-${item.id}`}
                 onClick={() => setCurrentNav(item.id as NavViewType)} 
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${
-                  isActive ? 'bg-blue-100 text-blue-700 font-bold shadow-sm' : 'text-gray-600 hover:bg-gray-200'
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-colors cursor-pointer ${
+                  isActive ? 'bg-blue-100 text-blue-700 shadow-xs' : 'text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -379,6 +392,30 @@ export default function ProjectManagerView({
             );
           })}
         </nav>
+
+        {onOpenProfile && (
+          <div className="p-4 border-t border-gray-200 shrink-0">
+            <button
+              onClick={onOpenProfile}
+              className="w-full flex items-center gap-3 p-2 rounded-2xl hover:bg-gray-200 transition-colors text-left cursor-pointer group"
+              title="プロフィール設定を開く"
+            >
+              <div className="relative">
+                {currentUser.avatarUrl ? (
+                  <img src={currentUser.avatarUrl} alt="avatar" className="w-10 h-10 rounded-full border object-cover" />
+                ) : (
+                  <div className={`w-10 h-10 rounded-full ${currentUser.color || 'bg-blue-600'} text-white font-bold flex items-center justify-center text-sm shadow-xs`}>
+                    {currentUser.name.charAt(0)}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <p className="font-extrabold text-sm text-gray-800 truncate group-hover:text-blue-600 transition-colors">{currentUser.name}</p>
+                <p className="text-[11px] text-gray-400 font-medium truncate">プロフィール設定</p>
+              </div>
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* --- メインビュー内容（右側） --- */}
@@ -390,16 +427,24 @@ export default function ProjectManagerView({
             <button onClick={onBackToHome} className="mr-2 p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <span className="truncate max-w-40">{project.name}</span>
+            <span className="truncate max-w-36 font-extrabold">{project.name}</span>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {project.status === 'completed' && (
-              <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded-full">完了済</span>
+            {onOpenProfile && (
+              <button onClick={onOpenProfile} className="cursor-pointer" title="プロフィール設定">
+                {currentUser.avatarUrl ? (
+                  <img src={currentUser.avatarUrl} alt="avatar" className="w-8 h-8 rounded-full border object-cover" />
+                ) : (
+                  <div className={`w-8 h-8 rounded-full ${currentUser.color || 'bg-blue-600'} text-white font-bold flex items-center justify-center text-xs shadow-xs`}>
+                    {currentUser.name.charAt(0)}
+                  </div>
+                )}
+              </button>
             )}
             <button 
               onClick={() => setCurrentNav('settings')}
-              className={`p-2 rounded-xl transition-colors ${currentNav === 'settings' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-700'}`}
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${currentNav === 'settings' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-gray-700'}`}
               title="プロジェクト設定"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -440,20 +485,19 @@ export default function ProjectManagerView({
                 const updatedMemos = newMemos.map(m => ({ ...m, projectId: project.id }));
                 setMemos([...otherMemos, ...updatedMemos]);
               }} 
+              members={projectMembers}
               activeProjectId={project.id}
               currentUser={currentUser} 
               requestConfirm={requestConfirm}
             />
           ) : currentNav === 'members' ? (
             <MemberView 
-              members={projectMembers} 
-              setMembers={(newMembers: Member[]) => {
-                const otherMembers = members.filter(m => m.projectId !== project.id);
-                const updatedMembers = newMembers.map(m => ({ ...m, projectId: project.id }));
-                setMembers([...otherMembers, ...updatedMembers]);
-              }} 
-              tasks={projectTasks} 
               activeProjectId={project.id}
+              project={project}
+              setProjects={setProjects}
+              projects={projects}
+              members={projectMembers} 
+              tasks={projectTasks} 
               groups={projectGroups}
               requestConfirm={requestConfirm}
             />
@@ -473,16 +517,16 @@ export default function ProjectManagerView({
                 <div className="flex bg-gray-100 rounded-xl p-1 w-full max-w-sm text-sm shadow-inner">
                   <button 
                     onClick={() => setTaskMode('prep')}
-                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg ${
-                      taskMode === 'prep' ? 'text-blue-600 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
+                      taskMode === 'prep' ? 'text-blue-600 bg-white shadow-xs' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
                     <span>📄</span> 準備モード
                   </button>
                   <button 
                     onClick={() => setTaskMode('day')}
-                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg ${
-                      taskMode === 'day' ? 'text-blue-600 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
+                      taskMode === 'day' ? 'text-blue-600 bg-white shadow-xs' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
                     <span>🕒</span> 当日モード
@@ -496,7 +540,7 @@ export default function ProjectManagerView({
                   <button 
                     onClick={handlePrevMonth} 
                     disabled={currentIndex <= 0}
-                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30"
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
                   </button>
@@ -506,7 +550,7 @@ export default function ProjectManagerView({
                   <button 
                     onClick={handleNextMonth} 
                     disabled={currentIndex >= availableYearMonths.length - 1}
-                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30"
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                   </button>
@@ -523,6 +567,7 @@ export default function ProjectManagerView({
                     onSelectGroup={setSelectedGroup}
                     onAddGroup={() => setIsGroupModalOpen(true)}
                     dateRowRefs={dateRowRefs}
+                    onVisibleMonthChange={setSelectedYearMonth}
                   />
                 ) : (
                   <DayTimelineView 
@@ -537,7 +582,7 @@ export default function ProjectManagerView({
                   <div className="absolute bottom-6 right-6 z-40">
                     <button 
                       onClick={handleOpenTaskModal}
-                      className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-bold p-4 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl hover:-translate-y-1"
+                      className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-bold p-4 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
                     >
                       <span className="text-2xl font-light leading-none">＋</span>
                     </button>
@@ -562,7 +607,7 @@ export default function ProjectManagerView({
               <button 
                 key={`sp-nav-${item.id}`}
                 onClick={() => setCurrentNav(item.id as NavViewType)} 
-                className={`flex flex-col items-center transition-colors flex-1 py-2 ${
+                className={`flex flex-col items-center transition-colors flex-1 py-2 cursor-pointer ${
                   isActive ? 'text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -701,7 +746,7 @@ export default function ProjectManagerView({
                     className="w-full border border-gray-300 rounded-xl p-3 bg-white font-bold text-sm text-gray-800 outline-none"
                   >
                     <option value="">(未分類)</option>
-                    {projectGroups.map(g => <option key={g.id} value={g.id}>▼ {g.name}</option>)}
+                    {projectGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
                 </div>
               ) : null}
@@ -735,7 +780,7 @@ export default function ProjectManagerView({
               )}
 
               <div className="mt-2">
-                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-sm hover:bg-blue-700 transition-colors">
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-sm hover:bg-blue-700 transition-colors cursor-pointer">
                   {taskMode === 'prep' ? '準備タスクを作成' : '当日タスクを作成'}
                 </button>
               </div>
@@ -857,7 +902,7 @@ export default function ProjectManagerView({
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-bold">現在の担当: {selectedTask.currentId || '未割当'}</span>
                     {project.status === 'active' && (
-                      <button type="button" onClick={() => handleHandover(selectedTask)} className="bg-pink-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm hover:bg-pink-700 transition-colors">
+                      <button type="button" onClick={() => handleHandover(selectedTask)} className="bg-pink-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm hover:bg-pink-700 transition-colors cursor-pointer">
                         次の担当者へ引き継ぎ &gt;
                       </button>
                     )}
@@ -870,7 +915,7 @@ export default function ProjectManagerView({
                   <p className="text-sm font-bold text-gray-500 mb-1">クイックアクション</p>
                   <button 
                     onClick={() => updateSelectedTask({ taskStatus: selectedTask.taskStatus === 'active' ? 'completed' : 'active' })} 
-                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 ${
+                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer ${
                       selectedTask.taskStatus === 'completed' ? 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100' : 'bg-green-500 text-white hover:bg-green-600 shadow-sm'
                     }`}
                   >
@@ -878,7 +923,7 @@ export default function ProjectManagerView({
                   </button>
                   <button 
                     onClick={() => updateSelectedTask({ needHelp: !selectedTask.needHelp })} 
-                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 border ${
+                    className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 border cursor-pointer ${
                       selectedTask.needHelp ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' : 'bg-white border-red-300 text-red-500 hover:bg-red-50'
                     }`}
                   >
@@ -888,9 +933,9 @@ export default function ProjectManagerView({
               )}
 
               <div className="mt-4 pt-4 border-t border-gray-100 flex gap-3 shrink-0">
-                <button onClick={() => setSelectedTask(null)} className="flex-1 py-2.5 border border-gray-300 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-colors">閉じる</button>
+                <button onClick={() => setSelectedTask(null)} className="flex-1 py-2.5 border border-gray-300 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">閉じる</button>
                 {project.status === 'active' && (
-                  <button onClick={handleDeleteTask} className="flex-1 py-2.5 bg-white border border-red-200 text-red-500 font-bold rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center gap-1">
+                  <button onClick={handleDeleteTask} className="flex-1 py-2.5 bg-white border border-red-200 text-red-500 font-bold rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center gap-1 cursor-pointer">
                     削除する
                   </button>
                 )}

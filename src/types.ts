@@ -1,14 +1,21 @@
 export type User = {
   id: string;
   name: string;
+  username?: string;
+  email?: string;
   iconUrl?: string;
+  avatarUrl?: string;
+  color?: string;
+  createdAt?: number;
 };
 
 export type Project = {
   id: string;
   name: string;
+  eventDate?: string;
   status: 'active' | 'completed';
   budget: number;
+  memberIds?: string[];
   createdAt: number;
 };
 
@@ -26,6 +33,7 @@ export type Group = {
   projectId: string;
   name: string;
   description?: string;
+  createdAt?: number;
 };
 
 export type Task = {
@@ -46,6 +54,7 @@ export type Task = {
   color: string;
   assignees?: string[];
   remind?: string;
+  createdAt?: number;
 };
 
 export type Expense = {
@@ -55,28 +64,33 @@ export type Expense = {
   amount: number;
   color: string;
   memo?: string;
+  createdAt?: number;
 };
 
 export type Reaction = {
   text: string;
   count: number;
+  userIds?: string[];
   hasReacted?: boolean;
 };
 
 export type Memo = {
   id: string;
   projectId: string;
+  authorId?: string;
   authorName: string;
   authorIcon?: string;
   authorColor: string;
   content: string;
   reactions: Reaction[];
+  createdAt?: number;
 };
 
 export type Member = {
   id: string;
   projectId: string;
   name: string;
+  avatarUrl?: string;
   color: string;
   isMe?: boolean;
 };
