@@ -8,6 +8,8 @@ import MemberView from './MemberView';
 import RetrospectiveView from './RetrospectiveView';
 import ProjectSettingsView from './ProjectSettingsView';
 
+type NavViewType = 'gantt' | 'budget' | 'memo' | 'members' | 'retrospective' | 'settings';
+
 type ProjectManagerViewProps = {
   project: Project;
   currentUser: User;
@@ -24,13 +26,12 @@ type ProjectManagerViewProps = {
   members: Member[];
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>;
   initialMode: 'prep' | 'day';
-  initialView: 'gantt' | 'retrospective';
+  currentNav: NavViewType;
+  setCurrentNav: (view: NavViewType) => void;
   onBackToHome: () => void;
   onOpenProfile?: () => void;
   requestConfirm: (options: ConfirmOptions) => void;
 };
-
-type NavViewType = 'gantt' | 'budget' | 'memo' | 'members' | 'retrospective' | 'settings';
 
 export default function ProjectManagerView({
   project,
@@ -47,12 +48,12 @@ export default function ProjectManagerView({
   setMemos,
   members,
   initialMode,
-  initialView,
+  currentNav,
+  setCurrentNav,
   onBackToHome,
   onOpenProfile,
   requestConfirm
 }: ProjectManagerViewProps) {
-  const [currentNav, setCurrentNav] = useState<NavViewType>(initialView);
   const [taskMode, setTaskMode] = useState<'prep' | 'day'>(initialMode);
 
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -344,7 +345,7 @@ export default function ProjectManagerView({
   };
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row h-full bg-white relative overflow-hidden font-sans">
+    <div className="flex-1 flex flex-col md:flex-row h-full w-full min-h-0 bg-white relative overflow-hidden font-sans">
       
       {/* --- PC用 サイドバー --- */}
       <aside className="hidden md:flex flex-col w-64 bg-gray-50 border-r border-gray-200 shrink-0 z-20">
@@ -419,11 +420,11 @@ export default function ProjectManagerView({
       </aside>
 
       {/* --- メインビュー内容（右側） --- */}
-      <div className="flex-1 flex flex-col overflow-hidden relative">
+      <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden relative">
         
         {/* SP用ヘッダー */}
-        <header className="md:hidden h-16 border-b border-gray-200 px-4 flex items-center justify-between shrink-0 bg-white z-20">
-          <div className="flex items-center text-lg font-bold overflow-hidden">
+        <header className="md:hidden h-14 border-b border-gray-200 px-4 flex items-center justify-between shrink-0 bg-white z-20">
+          <div className="flex items-center text-base font-bold overflow-hidden">
             <button onClick={onBackToHome} className="mr-2 p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
             </button>
@@ -455,7 +456,8 @@ export default function ProjectManagerView({
           </div>
         </header>
 
-        <div className="flex-1 overflow-hidden flex flex-col relative">
+        {/* コンテンツエリア */}
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
           {currentNav === 'retrospective' ? (
             <RetrospectiveView 
               project={project} 
@@ -510,14 +512,14 @@ export default function ProjectManagerView({
               requestConfirm={requestConfirm}
             />
           ) : (
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               
               {/* モード切替タブ */}
-              <div className="bg-white border-b border-gray-200 px-4 py-3 flex justify-center items-center shrink-0 z-30">
+              <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex justify-center items-center shrink-0 z-30">
                 <div className="flex bg-gray-100 rounded-xl p-1 w-full max-w-sm text-sm shadow-inner">
                   <button 
                     onClick={() => setTaskMode('prep')}
-                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
+                    className={`flex-1 py-1.5 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
                       taskMode === 'prep' ? 'text-blue-600 bg-white shadow-xs' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -525,7 +527,7 @@ export default function ProjectManagerView({
                   </button>
                   <button 
                     onClick={() => setTaskMode('day')}
-                    className={`flex-1 py-2 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
+                    className={`flex-1 py-1.5 flex items-center justify-center gap-2 font-bold transition-all rounded-lg cursor-pointer ${
                       taskMode === 'day' ? 'text-blue-600 bg-white shadow-xs' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -540,24 +542,24 @@ export default function ProjectManagerView({
                   <button 
                     onClick={handlePrevMonth} 
                     disabled={currentIndex <= 0}
-                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
+                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" /></svg>
                   </button>
-                  <div className="text-lg font-extrabold text-gray-800">
+                  <div className="text-base font-extrabold text-gray-800">
                     {selectedYearMonth ? `${selectedYearMonth.split('-')[0]}年 ${parseInt(selectedYearMonth.split('-')[1], 10)}月` : ''}
                   </div>
                   <button 
                     onClick={handleNextMonth} 
                     disabled={currentIndex >= availableYearMonths.length - 1}
-                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
+                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-30 cursor-pointer"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                   </button>
                 </div>
               )}
 
-              <div className="flex-1 overflow-hidden relative">
+              <div className="flex-1 min-h-0 overflow-hidden relative">
                 {taskMode === 'prep' ? (
                   <PrepGanttView 
                     tasks={projectTasks}
@@ -579,10 +581,10 @@ export default function ProjectManagerView({
                 )}
 
                 {project.status === 'active' && (
-                  <div className="absolute bottom-6 right-6 z-40">
+                  <div className="absolute bottom-4 right-4 z-40">
                     <button 
                       onClick={handleOpenTaskModal}
-                      className="bg-blue-600 hover:bg-blue-700 transition-all text-white font-bold p-4 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
+                      className="bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all text-white font-bold p-3.5 rounded-full shadow-lg flex items-center justify-center gap-2 hover:shadow-xl cursor-pointer"
                     >
                       <span className="text-2xl font-light leading-none">＋</span>
                     </button>
@@ -592,33 +594,6 @@ export default function ProjectManagerView({
             </div>
           )}
         </div>
-
-        {/* --- SP用 ボトムナビゲーションバー --- */}
-        <nav className="md:hidden h-16 bg-white border-t border-gray-200 flex justify-around items-center text-[10px] text-gray-500 shrink-0 z-40">
-          {[
-            { id: 'gantt', label: 'チャート', iconPath: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
-            { id: 'members', label: 'メンバー', iconPath: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" },
-            { id: 'budget', label: '予算管理', iconPath: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-            { id: 'memo', label: '共有メモ', iconPath: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
-            ...(project.status === 'completed' ? [{ id: 'retrospective', label: '振り返り', iconPath: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" }] : [])
-          ].map(item => {
-            const isActive = currentNav === item.id;
-            return (
-              <button 
-                key={`sp-nav-${item.id}`}
-                onClick={() => setCurrentNav(item.id as NavViewType)} 
-                className={`flex flex-col items-center transition-colors flex-1 py-2 cursor-pointer ${
-                  isActive ? 'text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.iconPath} />
-                </svg>
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
       </div>
 
       {/* --- 各種モーダル --- */}
@@ -627,7 +602,7 @@ export default function ProjectManagerView({
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden p-6 flex flex-col gap-4 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="font-extrabold text-lg text-gray-800">グループ: {selectedGroup.name}</h3>
-              <button onClick={() => setSelectedGroup(null)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+              <button onClick={() => setSelectedGroup(null)} className="text-gray-400 hover:text-gray-600 text-2xl cursor-pointer">&times;</button>
             </div>
 
             {(() => {
@@ -651,8 +626,8 @@ export default function ProjectManagerView({
                   </div>
 
                   <div className="pt-4 border-t flex gap-3">
-                    <button onClick={() => setSelectedGroup(null)} className="flex-1 py-2.5 border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50">閉じる</button>
-                    <button onClick={() => handleDeleteGroup(selectedGroup)} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 shadow-sm">グループを削除</button>
+                    <button onClick={() => setSelectedGroup(null)} className="flex-1 py-2.5 border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50 cursor-pointer">閉じる</button>
+                    <button onClick={() => handleDeleteGroup(selectedGroup)} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 shadow-sm cursor-pointer">グループを削除</button>
                   </div>
                 </div>
               );
@@ -666,7 +641,7 @@ export default function ProjectManagerView({
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden p-6 flex flex-col gap-4 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="font-extrabold text-lg text-gray-800">新規グループ追加</h3>
-              <button onClick={() => setIsGroupModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+              <button onClick={() => setIsGroupModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl cursor-pointer">&times;</button>
             </div>
             
             <form onSubmit={handleCreateGroup} className="flex flex-col gap-4">
@@ -683,8 +658,8 @@ export default function ProjectManagerView({
               </div>
 
               <div className="pt-2 flex gap-3">
-                <button type="button" onClick={() => setIsGroupModalOpen(false)} className="flex-1 py-2.5 border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50">キャンセル</button>
-                <button type="submit" className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-sm">作成する</button>
+                <button type="button" onClick={() => setIsGroupModalOpen(false)} className="flex-1 py-2.5 border border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-50 cursor-pointer">キャンセル</button>
+                <button type="submit" className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-sm cursor-pointer">作成する</button>
               </div>
             </form>
           </div>
@@ -696,7 +671,7 @@ export default function ProjectManagerView({
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 border-b border-gray-100 shrink-0">
               <h2 className="font-bold text-gray-800 text-lg">{taskMode === 'prep' ? '準備タスク追加' : '当日タスク追加'}</h2>
-              <button type="button" onClick={() => setIsTaskModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+              <button type="button" onClick={() => setIsTaskModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-2xl cursor-pointer">&times;</button>
             </div>
             
             <form onSubmit={handleAddTask} className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
@@ -800,7 +775,7 @@ export default function ProjectManagerView({
                   <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-bold border border-green-200">完了済</span>
                 )}
               </div>
-              <button onClick={() => setSelectedTask(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+              <button onClick={() => setSelectedTask(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none cursor-pointer">&times;</button>
             </div>
             
             <div className="p-6 flex flex-col gap-4 overflow-y-auto">
@@ -872,7 +847,7 @@ export default function ProjectManagerView({
                       <span key={name} className={`${colorClass} text-white px-2.5 py-1 rounded-full flex items-center justify-center text-xs font-bold shadow-sm`}>
                         {name}
                         {project.status === 'active' && (
-                          <button onClick={() => updateSelectedTask({ assignees: selectedTask.assignees?.filter(a => a !== name) })} className="ml-1.5 text-white hover:text-red-200">&times;</button>
+                          <button onClick={() => updateSelectedTask({ assignees: selectedTask.assignees?.filter(a => a !== name) })} className="ml-1.5 text-white hover:text-red-200 cursor-pointer">&times;</button>
                         )}
                       </span>
                     );
