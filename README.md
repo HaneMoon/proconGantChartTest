@@ -1,3 +1,10 @@
+実行環境をメモっておくよ
+node.js : 22.21.1  、
+bun　： 1.3.2
+
+
+
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
